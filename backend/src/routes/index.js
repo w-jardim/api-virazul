@@ -6,6 +6,7 @@ const alertsRoutes = require('../modules/alerts/alerts.routes');
 const dashboardRoutes = require('../modules/dashboard/dashboard.routes');
 const schedulesRoutes = require('../modules/schedules/schedules.routes');
 const agendaRoutes = require('../modules/agenda/agenda.routes');
+const planningRoutes = require('../modules/planning/planning.routes');
 const db = require('../config/db');
 const env = require('../config/env');
 
@@ -41,5 +42,6 @@ router.use('/alerts', alertsRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/schedules', schedulesRoutes);
 router.use('/agenda', agendaRoutes);
+router.use('/planning', planningRoutes);
 
 module.exports = router;

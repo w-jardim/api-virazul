@@ -136,23 +136,63 @@ async function seed() {
     const policeId = policeRows[0].id;
 
     await connection.query(
-      `INSERT INTO user_preferences (user_id, rule_b_enabled, payment_day_default, notification_prefs)
-       VALUES (?, ?, ?, CAST(? AS JSON))
+      `INSERT INTO user_preferences (
+         user_id,
+         rule_b_enabled,
+         payment_day_default,
+         notification_prefs,
+         monthly_hour_goal,
+         planning_preferences
+       )
+       VALUES (?, ?, ?, CAST(? AS JSON), ?, CAST(? AS JSON))
        ON DUPLICATE KEY UPDATE
          rule_b_enabled = VALUES(rule_b_enabled),
          payment_day_default = VALUES(payment_day_default),
-         notification_prefs = VALUES(notification_prefs)`,
-      [adminId, 1, 5, JSON.stringify({ email: true, push: true, whatsapp: false })]
+         notification_prefs = VALUES(notification_prefs),
+         monthly_hour_goal = VALUES(monthly_hour_goal),
+         planning_preferences = VALUES(planning_preferences)`,
+      [
+        adminId,
+        1,
+        5,
+        JSON.stringify({ email: true, push: true, whatsapp: false }),
+        120,
+        JSON.stringify({
+          preferred_durations: [8, 12],
+          avoided_durations: [24],
+          max_single_shift_hours: 12,
+        }),
+      ]
     );
 
     await connection.query(
-      `INSERT INTO user_preferences (user_id, rule_b_enabled, payment_day_default, notification_prefs)
-       VALUES (?, ?, ?, CAST(? AS JSON))
+      `INSERT INTO user_preferences (
+         user_id,
+         rule_b_enabled,
+         payment_day_default,
+         notification_prefs,
+         monthly_hour_goal,
+         planning_preferences
+       )
+       VALUES (?, ?, ?, CAST(? AS JSON), ?, CAST(? AS JSON))
        ON DUPLICATE KEY UPDATE
          rule_b_enabled = VALUES(rule_b_enabled),
          payment_day_default = VALUES(payment_day_default),
-         notification_prefs = VALUES(notification_prefs)`,
-      [policeId, 0, 10, JSON.stringify({ email: true, push: false, whatsapp: false })]
+         notification_prefs = VALUES(notification_prefs),
+         monthly_hour_goal = VALUES(monthly_hour_goal),
+         planning_preferences = VALUES(planning_preferences)`,
+      [
+        policeId,
+        0,
+        10,
+        JSON.stringify({ email: true, push: false, whatsapp: false }),
+        120,
+        JSON.stringify({
+          preferred_durations: [12],
+          avoided_durations: [],
+          max_single_shift_hours: 24,
+        }),
+      ]
     );
 
     await seedServiceTypes(connection);
