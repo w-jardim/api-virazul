@@ -1,0 +1,256 @@
+﻿const { pool } = require('../../config/db');
+
+async function findServiceTypeById(id) {
+  const [rows] = await pool.query(
+    `SELECT id, \`key\`, name, category, allows_reservation, requires_manual_value,
+            counts_in_financial, shows_in_agenda, accounting_rules
+       FROM service_types
+      WHERE id = ?
+      LIMIT 1`,
+    [id]
+  );
+
+  return rows[0] || null;
+}
+
+async function getUserPreferenceRuleB(userId) {
+  const [rows] = await pool.query(
+    `SELECT rule_b_enabled
+       FROM user_preferences
+      WHERE user_id = ?
+      LIMIT 1`,
+    [userId]
+  );
+
+  return rows[0] ? Boolean(rows[0].rule_b_enabled) : false;
+}
+
+async function createService(payload) {
+  const [result] = await pool.query(
+    `INSERT INTO services (
+      user_id,
+      service_type_id,
+      start_at,
+      duration_hours,
+      operational_status,
+      reservation_expires_at,
+      notes,
+      financial_status,
+      amount_base,
+      amount_paid,
+      amount_balance,
+      amount_meal,
+      amount_transport,
+      amount_additional,
+      amount_discount,
+      amount_total,
+      payment_due_date,
+      payment_at,
+      is_complementary,
+      created_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      payload.user_id,
+      payload.service_type_id,
+      payload.start_at,
+      payload.duration_hours,
+      payload.operational_status,
+      payload.reservation_expires_at,
+      payload.notes,
+      payload.financial_status,
+      payload.amount_base,
+      payload.amount_paid,
+      payload.amount_balance,
+      payload.amount_meal,
+      payload.amount_transport,
+      payload.amount_additional,
+      payload.amount_discount,
+      payload.amount_total,
+      payload.payment_due_date,
+      payload.payment_at,
+      Number(payload.is_complementary),
+      payload.created_by,
+    ]
+  );
+
+  return findById(result.insertId);
+}
+
+function buildListQuery(filters) {
+  const where = ['s.deleted_at IS NULL'];
+  const params = [];
+
+  if (filters.userId) {
+    where.push('s.user_id = ?');
+    params.push(filters.userId);
+  }
+
+  if (filters.serviceTypeId) {
+    where.push('s.service_type_id = ?');
+    params.push(filters.serviceTypeId);
+  }
+
+  const sql = `
+    SELECT s.*, st.\`key\` AS service_type_key, st.name AS service_type_name
+      FROM services s
+      JOIN service_types st ON st.id = s.service_type_id
+     WHERE ${where.join(' AND ')}
+     ORDER BY s.start_at DESC, s.id DESC`;
+
+  return { sql, params };
+}
+
+async function list(filters) {
+  const { sql, params } = buildListQuery(filters);
+  const [rows] = await pool.query(sql, params);
+  return rows;
+}
+
+async function findById(id) {
+  const [rows] = await pool.query(
+    `SELECT s.*, st.\`key\` AS service_type_key, st.name AS service_type_name
+       FROM services s
+       JOIN service_types st ON st.id = s.service_type_id
+      WHERE s.id = ?
+      LIMIT 1`,
+    [id]
+  );
+
+  return rows[0] || null;
+}
+
+async function updateService(id, payload) {
+  await pool.query(
+    `UPDATE services
+        SET service_type_id = ?,
+            start_at = ?,
+            duration_hours = ?,
+            reservation_expires_at = ?,
+            notes = ?,
+            amount_base = ?,
+            amount_paid = ?,
+            amount_balance = ?,
+            amount_meal = ?,
+            amount_transport = ?,
+            amount_additional = ?,
+            amount_discount = ?,
+            amount_total = ?,
+            payment_due_date = ?,
+            is_complementary = ?,
+            version = version + 1
+      WHERE id = ?
+        AND deleted_at IS NULL`,
+    [
+      payload.service_type_id,
+      payload.start_at,
+      payload.duration_hours,
+      payload.reservation_expires_at,
+      payload.notes,
+      payload.amount_base,
+      payload.amount_paid,
+      payload.amount_balance,
+      payload.amount_meal,
+      payload.amount_transport,
+      payload.amount_additional,
+      payload.amount_discount,
+      payload.amount_total,
+      payload.payment_due_date,
+      Number(payload.is_complementary),
+      id,
+    ]
+  );
+
+  return findById(id);
+}
+
+async function softDelete(id) {
+  const [result] = await pool.query(
+    `UPDATE services
+        SET deleted_at = CURRENT_TIMESTAMP,
+            version = version + 1
+      WHERE id = ?
+        AND deleted_at IS NULL`,
+    [id]
+  );
+
+  return result.affectedRows > 0;
+}
+
+async function getConnection() {
+  return pool.getConnection();
+}
+
+async function findByIdForUpdate(connection, id) {
+  const [rows] = await connection.query(
+    `SELECT *
+       FROM services
+      WHERE id = ?
+        AND deleted_at IS NULL
+      FOR UPDATE`,
+    [id]
+  );
+
+  return rows[0] || null;
+}
+
+async function applyTransition(connection, id, transition) {
+  await connection.query(
+    `UPDATE services
+        SET operational_status = ?,
+            financial_status = ?,
+            performed_at = ?,
+            payment_at = ?,
+            amount_paid = ?,
+            amount_balance = ?,
+            version = version + 1
+      WHERE id = ?`,
+    [
+      transition.operational_status,
+      transition.financial_status,
+      transition.performed_at,
+      transition.payment_at,
+      transition.amount_paid,
+      transition.amount_balance,
+      id,
+    ]
+  );
+}
+
+async function createStatusHistory(connection, payload) {
+  await connection.query(
+    `INSERT INTO service_status_history (
+      service_id,
+      previous_operational_status,
+      previous_financial_status,
+      new_operational_status,
+      new_financial_status,
+      transition_type,
+      changed_by,
+      reason
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      payload.service_id,
+      payload.previous_operational_status,
+      payload.previous_financial_status,
+      payload.new_operational_status,
+      payload.new_financial_status,
+      payload.transition_type,
+      payload.changed_by,
+      payload.reason,
+    ]
+  );
+}
+
+module.exports = {
+  findServiceTypeById,
+  getUserPreferenceRuleB,
+  createService,
+  list,
+  findById,
+  updateService,
+  softDelete,
+  getConnection,
+  findByIdForUpdate,
+  applyTransition,
+  createStatusHistory,
+};
