@@ -97,6 +97,22 @@ jest.mock('../../src/modules/services/services.repository', () => ({
   createStatusHistory: jest.fn(async (conn, payload) => {
     state.history.push({ id: state.history.length + 1, ...payload });
   }),
+  findOverlaps: jest.fn(async ({ userId, startAt, endAt, excludeServiceId }) =>
+    state.services.filter((item) => {
+      if (item.deleted_at) {
+        return false;
+      }
+      if (Number(item.user_id) !== Number(userId)) {
+        return false;
+      }
+      if (excludeServiceId && Number(item.id) === Number(excludeServiceId)) {
+        return false;
+      }
+      const rowStart = new Date(item.start_at);
+      const rowEnd = new Date(rowStart.getTime() + Number(item.duration_hours) * 60 * 60 * 1000);
+      return rowStart < new Date(endAt) && rowEnd > new Date(startAt);
+    })
+  ),
 }));
 
 const env = require('../../src/config/env');

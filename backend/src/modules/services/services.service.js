@@ -74,6 +74,33 @@ function assertValidId(id) {
   }
 }
 
+function addHours(dateValue, hours) {
+  const start = new Date(dateValue);
+  return new Date(start.getTime() + Number(hours) * 60 * 60 * 1000);
+}
+
+async function assertNoTimeConflict({ userId, startAt, durationHours, excludeServiceId, force }) {
+  if (force) {
+    return;
+  }
+
+  const endAt = addHours(startAt, durationHours);
+  const overlaps = await repository.findOverlaps({
+    userId,
+    startAt,
+    endAt,
+    excludeServiceId,
+  });
+
+  if (overlaps.length > 0) {
+    throw new AppError(
+      'SCHEDULE_CONFLICT',
+      'Existe conflito de horario com outro servico/escala. Use force=true para confirmar.',
+      409
+    );
+  }
+}
+
 function parseOptionalPositiveInt(value, fieldName) {
   if (value === undefined || value === null || value === '') {
     return null;
@@ -92,6 +119,12 @@ async function create(authUser, payload) {
   assertCanCreateForUser(authUser, userId);
 
   rules.assertValidDuration(payload.duration_hours);
+  await assertNoTimeConflict({
+    userId,
+    startAt: payload.start_at,
+    durationHours: payload.duration_hours,
+    force: payload.force,
+  });
 
   const serviceType = await repository.findServiceTypeById(payload.service_type_id);
   const operationalStatus = payload.operational_status || 'AGENDADO';
@@ -185,16 +218,25 @@ async function update(authUser, id, payload) {
   const amounts = rules.calculateAmounts(merged);
   const operationalStatus = existing.operational_status;
   const financialStatus = existing.financial_status;
+  const nextStartAt = payload.start_at || existing.start_at;
+  const nextDurationHours = payload.duration_hours ?? existing.duration_hours;
 
-  rules.assertValidDuration(payload.duration_hours ?? existing.duration_hours);
+  rules.assertValidDuration(nextDurationHours);
+  await assertNoTimeConflict({
+    userId: existing.user_id,
+    startAt: nextStartAt,
+    durationHours: nextDurationHours,
+    excludeServiceId: id,
+    force: payload.force,
+  });
   assertTypeRules(serviceType, operationalStatus, amounts);
   rules.assertFinancialCompatibilityWithOperational(operationalStatus, financialStatus);
   rules.assertFinancialRules(financialStatus, amounts);
 
   return repository.updateService(id, {
     service_type_id: serviceTypeId,
-    start_at: payload.start_at || existing.start_at,
-    duration_hours: payload.duration_hours ?? existing.duration_hours,
+    start_at: nextStartAt,
+    duration_hours: nextDurationHours,
     reservation_expires_at:
       Object.prototype.hasOwnProperty.call(payload, 'reservation_expires_at')
         ? payload.reservation_expires_at

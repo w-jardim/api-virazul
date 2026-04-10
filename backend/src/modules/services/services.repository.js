@@ -241,6 +241,44 @@ async function createStatusHistory(connection, payload) {
   );
 }
 
+function buildOverlapQuery(params) {
+  const where = [
+    's.user_id = ?',
+    's.deleted_at IS NULL',
+    's.start_at < ?',
+    'DATE_ADD(s.start_at, INTERVAL s.duration_hours HOUR) > ?',
+  ];
+  const queryParams = [params.userId, params.endAt, params.startAt];
+
+  if (params.excludeServiceId) {
+    where.push('s.id <> ?');
+    queryParams.push(params.excludeServiceId);
+  }
+
+  const sql = `
+    SELECT s.id, s.start_at, s.duration_hours, s.operational_status,
+           st.\`key\` AS service_type_key, st.name AS service_type_name
+      FROM services s
+      JOIN service_types st ON st.id = s.service_type_id
+     WHERE ${where.join(' AND ')}
+     ORDER BY s.start_at ASC, s.id ASC
+     LIMIT 20`;
+
+  return { sql, queryParams };
+}
+
+async function findOverlaps({ userId, startAt, endAt, excludeServiceId }) {
+  const { sql, queryParams } = buildOverlapQuery({
+    userId,
+    startAt,
+    endAt,
+    excludeServiceId,
+  });
+
+  const [rows] = await pool.query(sql, queryParams);
+  return rows;
+}
+
 module.exports = {
   findServiceTypeById,
   getUserPreferenceRuleB,
@@ -253,4 +291,5 @@ module.exports = {
   findByIdForUpdate,
   applyTransition,
   createStatusHistory,
+  findOverlaps,
 };

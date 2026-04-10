@@ -13,6 +13,7 @@ jest.mock('../../src/modules/services/services.repository', () => ({
   findByIdForUpdate: jest.fn(),
   applyTransition: jest.fn(),
   createStatusHistory: jest.fn(),
+  findOverlaps: jest.fn(),
 }));
 
 const repository = require('../../src/modules/services/services.repository');
@@ -51,6 +52,7 @@ function makeBaseService(overrides = {}) {
 describe('Services Integration', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    repository.findOverlaps.mockResolvedValue([]);
   });
 
   test('criar servico valido', async () => {
