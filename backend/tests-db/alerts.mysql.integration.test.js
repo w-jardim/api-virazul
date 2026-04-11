@@ -1,13 +1,3 @@
-﻿process.env.NODE_ENV = 'test';
-process.env.DB_HOST = process.env.DB_HOST || '127.0.0.1';
-process.env.DB_PORT = process.env.DB_PORT || '3306';
-process.env.DB_NAME = process.env.DB_NAME || 'viraazul';
-process.env.DB_USER = process.env.DB_USER || 'root';
-process.env.DB_PASSWORD = process.env.DB_PASSWORD || 'root';
-process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
-process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
-process.env.TZ = process.env.TZ || 'America/Sao_Paulo';
-
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
 const runMigrations = require('../database/migrate');
@@ -16,6 +6,7 @@ const { pool } = require('../src/config/db');
 const { hashPassword } = require('../src/utils/password');
 const env = require('../src/config/env');
 const app = require('../src/app');
+const { ensureTestDatabase, validateTestDbConnection } = require('./helpers/db-test-setup');
 
 jest.setTimeout(180000);
 
@@ -55,6 +46,8 @@ describe('Alerts MySQL Integration', () => {
   const userIds = [];
 
   beforeAll(async () => {
+    await ensureTestDatabase();
+    await validateTestDbConnection(pool);
     await runMigrations();
     await seed();
   });

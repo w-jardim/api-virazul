@@ -15,6 +15,7 @@ jest.mock('../../src/modules/planning/planning.repository', () => ({
 
 const env = require('../../src/config/env');
 const app = require('../../src/app');
+const { toDateKeyInTimeZone } = require('../../src/modules/alerts/alerts.time');
 
 function authHeader(payload) {
   const token = jwt.sign(payload, env.jwt.secret, { expiresIn: env.jwt.expiresIn });
@@ -23,7 +24,9 @@ function authHeader(payload) {
 
 function getCurrentMonthDate(daysOffset = 0) {
   const now = new Date();
-  return new Date(now.getTime() + daysOffset * 24 * 60 * 60 * 1000).toISOString();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysOffset, 12, 0, 0)
+  ).toISOString();
 }
 
 describe('Planning Integration', () => {
@@ -192,7 +195,7 @@ describe('Planning Integration', () => {
       },
     ]);
 
-    const conflictDate = getCurrentMonthDate(0).slice(0, 10);
+    const conflictDate = toDateKeyInTimeZone(getCurrentMonthDate(0));
 
     const response = await request(app)
       .get('/api/v1/planning/suggestions')

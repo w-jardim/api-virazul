@@ -1,8 +1,13 @@
-﻿const app = require('./app');
+const app = require('./app');
 const env = require('./config/env');
+const logger = require('./utils/logger');
 
 const server = app.listen(env.port, () => {
-  console.log(`API listening on port ${env.port} (${env.nodeEnv})`);
+  logger.info('app.start', {
+    port: env.port,
+    environment: env.nodeEnv,
+    timezone: env.tz,
+  });
 });
 
 module.exports = server;
