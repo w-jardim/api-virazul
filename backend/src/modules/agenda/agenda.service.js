@@ -1,7 +1,7 @@
 const AppError = require('../../utils/app-error');
 const env = require('../../config/env');
 const repository = require('./agenda.repository');
-const { getTimeZoneDayRange, toDateKeyInTimeZone } = require('../alerts/alerts.time');
+const timezone = require('../../utils/timezone');
 
 function isAdminMaster(user) {
   return user && user.role === 'ADMIN_MASTER';
@@ -25,10 +25,12 @@ function resolveTargetUserId(authUser, queryUserId) {
 }
 
 function toAnchorDate(dateKey) {
-  const [year, month, day] = String(dateKey)
-    .split('-')
-    .map((value) => Number(value));
-  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const [year, month, day] = String(dateKey).split('-').map((value) => Number(value));
+  // anchor at local noon to avoid DST shifts when computing day ranges
+  const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(
+    day
+  ).padStart(2, '0')}T12:00:00`;
+  return new Date(iso);
 }
 
 function toMonthAnchor(monthKey) {
@@ -48,7 +50,8 @@ function splitByReservation(items) {
 function buildDateSeries(start, days) {
   const result = [];
   for (let index = 0; index < days; index += 1) {
-    result.push(toDateKeyInTimeZone(new Date(start.getTime() + index * 24 * 60 * 60 * 1000), env.tz));
+    const day = new Date(start.getTime() + index * 24 * 60 * 60 * 1000);
+    result.push(timezone.toLocalDateKey(day));
   }
   return result;
 }
@@ -56,7 +59,7 @@ function buildDateSeries(start, days) {
 function groupByDate(items) {
   const grouped = {};
   for (const item of items) {
-    const dateKey = toDateKeyInTimeZone(item.start_at, env.tz);
+    const dateKey = timezone.toLocalDateKey(item.start_at);
     if (!grouped[dateKey]) {
       grouped[dateKey] = [];
     }
@@ -77,8 +80,9 @@ function resolveMonthRange(monthKey) {
 async function getDayAgenda(authUser, query) {
   const userId = resolveTargetUserId(authUser, query.user_id);
   const anchor = toAnchorDate(query.date);
-  const range = getTimeZoneDayRange(anchor, env.tz);
-  const items = await repository.listByUserInRange(userId, range.start, range.end);
+  const start = timezone.getStartOfDay(anchor);
+  const end = timezone.getEndOfDay(anchor);
+  const items = await repository.listByUserInRange(userId, start, end);
 
   return {
     date: query.date,
@@ -89,8 +93,7 @@ async function getDayAgenda(authUser, query) {
 async function getWeekAgenda(authUser, query) {
   const userId = resolveTargetUserId(authUser, query.user_id);
   const anchor = toAnchorDate(query.start);
-  const dayRange = getTimeZoneDayRange(anchor, env.tz);
-  const rangeStart = dayRange.start;
+  const rangeStart = timezone.getStartOfDay(anchor);
   const rangeEnd = new Date(rangeStart.getTime() + 7 * 24 * 60 * 60 * 1000);
   const items = await repository.listByUserInRange(userId, rangeStart, rangeEnd);
   const grouped = groupByDate(items);
@@ -108,7 +111,12 @@ async function getWeekAgenda(authUser, query) {
 
 async function getMonthAgenda(authUser, query) {
   const userId = resolveTargetUserId(authUser, query.user_id);
-  const { start, end } = resolveMonthRange(query.month);
+  const [year, month] = String(query.month).split('-').map((v) => Number(v));
+  const anchor = new Date(`${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01T12:00:00`);
+  const start = timezone.getStartOfDay(anchor);
+  const nextMonth = new Date(start);
+  nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+  const end = timezone.getStartOfDay(nextMonth);
   const items = await repository.listByUserInRange(userId, start, end);
   const grouped = groupByDate(items);
   const dates = Object.keys(grouped).sort();

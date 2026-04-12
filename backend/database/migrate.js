@@ -1,6 +1,7 @@
 ﻿const fs = require('fs');
 const path = require('path');
-const { pool } = require('../src/config/db');
+const mysql = require('mysql2/promise');
+const { db } = require('../src/config/env');
 
 async function runMigrations() {
   const migrationsDir = path.resolve(__dirname, 'migrations');
@@ -9,16 +10,30 @@ async function runMigrations() {
     .filter((file) => file.endsWith('.sql'))
     .sort();
 
-  for (const file of files) {
-    const fullPath = path.join(migrationsDir, file);
-    const sql = fs.readFileSync(fullPath, 'utf8').trim();
+  // Use a dedicated connection with multipleStatements enabled to execute complex SQL files
+  const connection = await mysql.createConnection({
+    host: db.host,
+    port: db.port,
+    user: db.user,
+    password: db.password,
+    database: db.database,
+    multipleStatements: true,
+  });
 
-    if (!sql) {
-      continue;
+  try {
+    for (const file of files) {
+      const fullPath = path.join(migrationsDir, file);
+      const sql = fs.readFileSync(fullPath, 'utf8').trim();
+
+      if (!sql) {
+        continue;
+      }
+
+      console.log(`Running migration: ${file}`);
+      await connection.query(sql);
     }
-
-    console.log(`Running migration: ${file}`);
-    await pool.query(sql);
+  } finally {
+    await connection.end();
   }
 
   console.log('Migrations finished successfully.');
