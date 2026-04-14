@@ -83,7 +83,7 @@ describe('Alerts MySQL Integration', () => {
         serviceTypeId,
         today,
         12,
-        'AGENDADO',
+        'TITULAR',
         'PREVISTO',
         100,
         0,

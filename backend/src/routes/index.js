@@ -9,6 +9,8 @@ const agendaRoutes = require('../modules/agenda/agenda.routes');
 const planningRoutes = require('../modules/planning/planning.routes');
 const financeRoutes = require('../modules/finance/finance.routes');
 const reportsRoutes = require('../modules/reports/reports.routes');
+const pricingRoutes = require('../modules/pricing/pricing.routes');
+const adminRoutes = require('../modules/admin/admin.routes');
 const db = require('../config/db');
 const env = require('../config/env');
 
@@ -71,5 +73,7 @@ router.use('/agenda', agendaRoutes);
 router.use('/planning', planningRoutes);
 router.use('/finance', financeRoutes);
 router.use('/reports', reportsRoutes);
+router.use('/pricing', pricingRoutes);
+router.use('/admin', adminRoutes);
 
 module.exports = router;

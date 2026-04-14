@@ -113,6 +113,14 @@ jest.mock('../../src/modules/services/services.repository', () => ({
       return rowStart < new Date(endAt) && rowEnd > new Date(startAt);
     })
   ),
+  findActiveBasePricing: jest.fn(async () => null),
+  findActiveFinancialRule: jest.fn(async () => null),
+}));
+
+jest.mock('../../src/modules/pricing/pricing.repository', () => ({
+  findUserRankGroup: jest.fn(async () => null),
+  VALID_RANK_GROUPS: ['OFICIAIS_SUPERIORES', 'CAPITAO_TENENTE', 'SUBTENENTE_SARGENTO', 'CABO_SOLDADO'],
+  VALID_SERVICE_SCOPES: ['RAS', 'PROEIS', 'SEGURANCA_PRESENTE', 'OUTROS'],
 }));
 
 const env = require('../../src/config/env');
@@ -181,7 +189,7 @@ describe('Services Persistence Integration', () => {
         service_type_id: 2,
         start_at: '2026-04-10T08:00:00.000Z',
         duration_hours: 12,
-        operational_status: 'AGENDADO',
+        operational_status: 'TITULAR',
         financial_status: 'PREVISTO',
         amount_base: 100,
       });
@@ -208,7 +216,7 @@ describe('Services Persistence Integration', () => {
         service_type_id: 2,
         start_at: '2026-04-10T08:00:00.000Z',
         duration_hours: 12,
-        operational_status: 'AGENDADO',
+        operational_status: 'TITULAR',
         financial_status: 'PREVISTO',
         amount_base: 100,
       });
@@ -275,10 +283,10 @@ describe('Services Persistence Integration', () => {
         service_type_id: 2,
         start_at: '2026-04-10T08:00:00.000Z',
         duration_hours: 12,
-        operational_status: 'AGENDADO',
+        operational_status: 'TITULAR',
         financial_status: 'PREVISTO',
         amount_base: 100,
-        amount_paid: 120,
+        amount_paid: 500,
       });
 
     expect(invalidAmounts.status).toBe(400);

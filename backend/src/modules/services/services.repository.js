@@ -1,4 +1,4 @@
-﻿const { pool } = require('../../config/db');
+const { pool } = require('../../config/db');
 
 async function findServiceTypeById(id) {
   const [rows] = await pool.query(
@@ -25,6 +25,40 @@ async function getUserPreferenceRuleB(userId) {
   return rows[0] ? Boolean(rows[0].rule_b_enabled) : false;
 }
 
+async function findActiveBasePricing(rankGroup, durationHours, referenceDate = null) {
+  const [rows] = await pool.query(
+    `SELECT rank_group, duration_hours, base_amount, effective_start_date, effective_end_date, is_active
+       FROM pricing_base_values
+      WHERE rank_group = ?
+        AND duration_hours = ?
+        AND is_active = 1
+        AND effective_start_date <= COALESCE(?, CURRENT_DATE())
+        AND (effective_end_date IS NULL OR effective_end_date >= COALESCE(?, CURRENT_DATE()))
+      ORDER BY effective_start_date DESC, id DESC
+      LIMIT 1`,
+    [rankGroup, durationHours, referenceDate, referenceDate]
+  );
+
+  return rows[0] || null;
+}
+
+async function findActiveFinancialRule(serviceScope, referenceDate = null) {
+  const [rows] = await pool.query(
+    `SELECT service_scope, allow_transport, transport_amount, allow_meal, meal_amount,
+            effective_start_date, effective_end_date, is_active
+       FROM service_type_financial_rules
+      WHERE service_scope = ?
+        AND is_active = 1
+        AND effective_start_date <= COALESCE(?, CURRENT_DATE())
+        AND (effective_end_date IS NULL OR effective_end_date >= COALESCE(?, CURRENT_DATE()))
+      ORDER BY effective_start_date DESC, id DESC
+      LIMIT 1`,
+    [serviceScope, referenceDate, referenceDate]
+  );
+
+  return rows[0] || null;
+}
+
 async function createService(payload) {
   const [result] = await pool.query(
     `INSERT INTO services (
@@ -44,11 +78,12 @@ async function createService(payload) {
       amount_additional,
       amount_discount,
       amount_total,
+      financial_snapshot,
       payment_due_date,
       payment_at,
       is_complementary,
       created_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?, ?, ?)` ,
     [
       payload.user_id,
       payload.service_type_id,
@@ -66,6 +101,7 @@ async function createService(payload) {
       payload.amount_additional,
       payload.amount_discount,
       payload.amount_total,
+      JSON.stringify(payload.financial_snapshot || null),
       payload.payment_due_date,
       payload.payment_at,
       Number(payload.is_complementary),
@@ -91,7 +127,8 @@ function buildListQuery(filters) {
   }
 
   const sql = `
-    SELECT s.*, st.\`key\` AS service_type_key, st.name AS service_type_name
+    SELECT s.*, st.\`key\` AS service_type_key, st.name AS service_type_name, st.category AS service_type_category,
+           st.allows_reservation, st.counts_in_financial, st.accounting_rules
       FROM services s
       JOIN service_types st ON st.id = s.service_type_id
      WHERE ${where.join(' AND ')}
@@ -108,7 +145,8 @@ async function list(filters) {
 
 async function findById(id) {
   const [rows] = await pool.query(
-    `SELECT s.*, st.\`key\` AS service_type_key, st.name AS service_type_name
+    `SELECT s.*, st.\`key\` AS service_type_key, st.name AS service_type_name, st.category AS service_type_category,
+            st.allows_reservation, st.counts_in_financial, st.accounting_rules
        FROM services s
        JOIN service_types st ON st.id = s.service_type_id
       WHERE s.id = ?
@@ -135,6 +173,7 @@ async function updateService(id, payload) {
             amount_additional = ?,
             amount_discount = ?,
             amount_total = ?,
+            financial_snapshot = CAST(? AS JSON),
             payment_due_date = ?,
             is_complementary = ?,
             version = version + 1
@@ -154,6 +193,7 @@ async function updateService(id, payload) {
       payload.amount_additional,
       payload.amount_discount,
       payload.amount_total,
+      JSON.stringify(payload.financial_snapshot || null),
       payload.payment_due_date,
       Number(payload.is_complementary),
       id,
@@ -241,6 +281,37 @@ async function createStatusHistory(connection, payload) {
   );
 }
 
+async function syncPendingFinancialStatuses(referenceDate) {
+  const [result] = await pool.query(
+    `UPDATE services
+        SET financial_status = 'PENDENTE',
+            version = version + 1
+      WHERE deleted_at IS NULL
+        AND payment_due_date IS NOT NULL
+        AND financial_status IN ('PREVISTO', 'NAO_PAGO', 'PAGO_PARCIAL')
+        AND payment_due_date <= ?
+        AND payment_due_date >= DATE_SUB(?, INTERVAL 5 DAY)`,
+    [referenceDate, referenceDate]
+  );
+
+  return result.affectedRows || 0;
+}
+
+async function syncOverdueFinancialStatuses(referenceDate) {
+  const [result] = await pool.query(
+    `UPDATE services
+        SET financial_status = 'EM_ATRASO',
+            version = version + 1
+      WHERE deleted_at IS NULL
+        AND payment_due_date IS NOT NULL
+        AND financial_status IN ('PREVISTO', 'NAO_PAGO', 'PAGO_PARCIAL', 'PENDENTE')
+        AND payment_due_date < DATE_SUB(?, INTERVAL 5 DAY)`,
+    [referenceDate]
+  );
+
+  return result.affectedRows || 0;
+}
+
 function buildOverlapQuery(params) {
   const where = [
     's.user_id = ?',
@@ -282,6 +353,8 @@ async function findOverlaps({ userId, startAt, endAt, excludeServiceId }) {
 module.exports = {
   findServiceTypeById,
   getUserPreferenceRuleB,
+  findActiveBasePricing,
+  findActiveFinancialRule,
   createService,
   list,
   findById,
@@ -291,5 +364,7 @@ module.exports = {
   findByIdForUpdate,
   applyTransition,
   createStatusHistory,
+  syncPendingFinancialStatuses,
+  syncOverdueFinancialStatuses,
   findOverlaps,
 };

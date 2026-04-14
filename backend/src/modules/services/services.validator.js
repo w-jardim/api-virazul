@@ -1,14 +1,19 @@
-﻿const Joi = require('joi');
+const Joi = require('joi');
 const AppError = require('../../utils/app-error');
-const { OPERATIONAL_STATUSES, FINANCIAL_STATUSES } = require('./services.rules');
+const {
+  OPERATIONAL_STATUSES,
+  INITIAL_OPERATIONAL_STATUSES,
+  FINANCIAL_STATUSES,
+  DURATION_ALLOWED,
+} = require('./services.rules');
 
 const createSchema = Joi.object({
   user_id: Joi.number().integer().positive().optional(),
   service_type_id: Joi.number().integer().positive().required(),
   start_at: Joi.date().iso().required(),
-  duration_hours: Joi.number().integer().required(),
+  duration_hours: Joi.number().integer().valid(...DURATION_ALLOWED).required(),
   force: Joi.boolean().default(false),
-  operational_status: Joi.string().valid(...OPERATIONAL_STATUSES).default('AGENDADO'),
+  operational_status: Joi.string().valid(...INITIAL_OPERATIONAL_STATUSES).default('TITULAR'),
   reservation_expires_at: Joi.date().iso().allow(null),
   notes: Joi.string().allow('', null),
   financial_status: Joi.string().valid(...FINANCIAL_STATUSES).default('PREVISTO'),
@@ -24,7 +29,7 @@ const createSchema = Joi.object({
 const updateSchema = Joi.object({
   service_type_id: Joi.number().integer().positive().optional(),
   start_at: Joi.date().iso().optional(),
-  duration_hours: Joi.number().integer().optional(),
+  duration_hours: Joi.number().integer().valid(...DURATION_ALLOWED).optional(),
   force: Joi.boolean().default(false),
   reservation_expires_at: Joi.date().iso().allow(null),
   notes: Joi.string().allow('', null),
@@ -45,6 +50,23 @@ const transitionSchema = Joi.object({
   target_financial_status: Joi.string().valid(...FINANCIAL_STATUSES).optional(),
   reason: Joi.string().trim().allow('', null).max(500),
 }).or('target_operational_status', 'target_financial_status');
+
+const previewFinancialSchema = Joi.object({
+  service_type_id: Joi.number().integer().positive().required(),
+  duration_hours: Joi.number().integer().valid(...DURATION_ALLOWED).required(),
+  amount_base: Joi.number().min(0).optional(),
+  amount_meal: Joi.number().min(0).optional(),
+  amount_transport: Joi.number().min(0).optional(),
+}).required();
+
+const confirmPaymentSchema = Joi.object({
+  payment_at: Joi.date().iso().optional(),
+  reason: Joi.string().trim().allow('', null).max(500),
+}).unknown(false);
+
+const promoteReservationSchema = Joi.object({
+  reason: Joi.string().trim().allow('', null).max(500),
+}).unknown(false);
 
 const idParamSchema = Joi.object({
   id: Joi.number().integer().positive().required(),
@@ -78,6 +100,9 @@ module.exports = {
   validateCreate: validate(createSchema, 'body'),
   validateUpdate: validate(updateSchema, 'body'),
   validateTransition: validate(transitionSchema, 'body'),
+  validateConfirmPayment: validate(confirmPaymentSchema, 'body'),
+  validatePromoteReservation: validate(promoteReservationSchema, 'body'),
+  validatePreviewFinancial: validate(previewFinancialSchema, 'body'),
   validateIdParam: validate(idParamSchema, 'params'),
   validateListQuery: validate(listQuerySchema, 'query'),
 };

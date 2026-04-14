@@ -348,7 +348,7 @@ describe('Schedules and Agenda Integration', () => {
         service_type_id: 2,
         start_at: '2026-04-23T09:00:00.000Z',
         duration_hours: 6,
-        operational_status: 'AGENDADO',
+        operational_status: 'TITULAR',
         financial_status: 'PREVISTO',
         amount_base: 100,
       });

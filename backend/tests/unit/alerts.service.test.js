@@ -29,7 +29,7 @@ describe('Alerts Service Unit', () => {
 
     expect(
       service.isOperationalPendingService(
-        { start_at: past, operational_status: 'AGENDADO' },
+        { start_at: past, operational_status: 'TITULAR' },
         new Date()
       )
     ).toBe(true);
@@ -80,7 +80,7 @@ describe('Alerts Service Unit', () => {
         service_type_key: 'ras_voluntary',
         service_type_name: 'RAS Voluntario',
         start_at: today,
-        operational_status: 'AGENDADO',
+        operational_status: 'TITULAR',
         financial_status: 'PREVISTO',
         duration_hours: 12,
       },

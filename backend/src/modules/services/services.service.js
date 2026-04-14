@@ -1,6 +1,8 @@
-﻿const AppError = require('../../utils/app-error');
+const AppError = require('../../utils/app-error');
 const repository = require('./services.repository');
 const rules = require('./services.rules');
+const pricing = require('./services.pricing');
+const { toLocalDateKey } = require('../../utils/timezone');
 
 function isAdminMaster(user) {
   return user && user.role === 'ADMIN_MASTER';
@@ -29,6 +31,14 @@ function assertCanCreateForUser(authUser, targetUserId) {
 function assertTypeRules(serviceType, operationalStatus, amounts) {
   if (!serviceType) {
     throw new AppError('SERVICE_TYPE_NOT_FOUND', 'Tipo de servico nao encontrado.', 404);
+  }
+
+  if (!rules.INITIAL_OPERATIONAL_STATUSES.includes(operationalStatus)) {
+    throw new AppError(
+      'INVALID_OPERATIONAL_STATUS',
+      'Servico deve ser criado inicialmente como TITULAR ou RESERVA.',
+      400
+    );
   }
 
   if (serviceType.key === 'ras_compulsory' && operationalStatus === 'RESERVA') {
@@ -114,6 +124,37 @@ function parseOptionalPositiveInt(value, fieldName) {
   return parsed;
 }
 
+async function buildAmountsAndSnapshot(serviceType, payload, existing = null, userId = null) {
+  const preview = await pricing.buildFinancialPreview({
+    serviceType,
+    durationHours: payload.duration_hours,
+    manualAmounts: payload,
+    userId,
+    referenceDate: payload.start_at,
+  });
+
+  const merged = pricing.applyPreviewToPayload(preview, {
+    amount_additional: payload.amount_additional,
+    amount_discount: payload.amount_discount,
+    amount_paid: payload.amount_paid,
+  });
+
+  const amounts = rules.calculateAmounts(merged);
+  const financialSnapshot = {
+    service_scope: preview.service_scope,
+    rank_group: preview.rank_group,
+    base_amount: preview.base_amount,
+    transport_amount: preview.transport_amount,
+    meal_amount: preview.meal_amount,
+    total_amount: preview.total_amount,
+    source: preview.source,
+    calculated_at: new Date().toISOString(),
+    previous_snapshot: existing?.financial_snapshot || null,
+  };
+
+  return { amounts, financialSnapshot, preview };
+}
+
 async function create(authUser, payload) {
   const userId = payload.user_id || authUser.id;
   assertCanCreateForUser(authUser, userId);
@@ -127,9 +168,9 @@ async function create(authUser, payload) {
   });
 
   const serviceType = await repository.findServiceTypeById(payload.service_type_id);
-  const operationalStatus = payload.operational_status || 'AGENDADO';
+  const operationalStatus = payload.operational_status || 'TITULAR';
   const financialStatus = payload.financial_status || 'PREVISTO';
-  const amounts = rules.calculateAmounts(payload);
+  const { amounts, financialSnapshot } = await buildAmountsAndSnapshot(serviceType, payload, null, userId);
 
   assertTypeRules(serviceType, operationalStatus, amounts);
   rules.assertFinancialCompatibilityWithOperational(operationalStatus, financialStatus);
@@ -152,6 +193,7 @@ async function create(authUser, payload) {
     amount_additional: amounts.amount_additional,
     amount_discount: amounts.amount_discount,
     amount_total: amounts.amount_total,
+    financial_snapshot: financialSnapshot,
     payment_due_date: payload.payment_due_date || null,
     payment_at: null,
     is_complementary: Boolean(serviceType.counts_in_financial),
@@ -159,6 +201,21 @@ async function create(authUser, payload) {
   });
 
   return created;
+}
+
+async function previewFinancial(authUser, payload) {
+  const serviceType = await repository.findServiceTypeById(payload.service_type_id);
+  if (!serviceType) {
+    throw new AppError('SERVICE_TYPE_NOT_FOUND', 'Tipo de servico nao encontrado.', 404);
+  }
+
+  const preview = await pricing.buildFinancialPreview({
+    serviceType,
+    durationHours: payload.duration_hours,
+    manualAmounts: payload,
+  });
+
+  return preview;
 }
 
 async function list(authUser, query) {
@@ -205,17 +262,6 @@ async function update(authUser, id, payload) {
 
   const serviceTypeId = payload.service_type_id || existing.service_type_id;
   const serviceType = await repository.findServiceTypeById(serviceTypeId);
-
-  const merged = {
-    amount_base: payload.amount_base ?? existing.amount_base,
-    amount_paid: payload.amount_paid ?? existing.amount_paid,
-    amount_meal: payload.amount_meal ?? existing.amount_meal,
-    amount_transport: payload.amount_transport ?? existing.amount_transport,
-    amount_additional: payload.amount_additional ?? existing.amount_additional,
-    amount_discount: payload.amount_discount ?? existing.amount_discount,
-  };
-
-  const amounts = rules.calculateAmounts(merged);
   const operationalStatus = existing.operational_status;
   const financialStatus = existing.financial_status;
   const nextStartAt = payload.start_at || existing.start_at;
@@ -229,6 +275,22 @@ async function update(authUser, id, payload) {
     excludeServiceId: id,
     force: payload.force,
   });
+
+  const { amounts, financialSnapshot } = await buildAmountsAndSnapshot(
+    serviceType,
+    {
+      ...existing,
+      ...payload,
+      start_at: nextStartAt,
+      duration_hours: nextDurationHours,
+      amount_paid: payload.amount_paid ?? existing.amount_paid,
+      amount_additional: payload.amount_additional ?? existing.amount_additional,
+      amount_discount: payload.amount_discount ?? existing.amount_discount,
+    },
+    existing,
+    existing.user_id
+  );
+
   assertTypeRules(serviceType, operationalStatus, amounts);
   rules.assertFinancialCompatibilityWithOperational(operationalStatus, financialStatus);
   rules.assertFinancialRules(financialStatus, amounts);
@@ -250,6 +312,7 @@ async function update(authUser, id, payload) {
     amount_additional: amounts.amount_additional,
     amount_discount: amounts.amount_discount,
     amount_total: amounts.amount_total,
+    financial_snapshot: financialSnapshot,
     payment_due_date:
       Object.prototype.hasOwnProperty.call(payload, 'payment_due_date')
         ? payload.payment_due_date
@@ -361,6 +424,82 @@ async function transition(authUser, id, payload) {
   return repository.findById(id);
 }
 
+async function confirmPayment(authUser, id, payload = {}) {
+  assertValidId(id);
+
+  const existing = await repository.findById(id);
+  if (!existing || existing.deleted_at) {
+    throw new AppError('SERVICE_NOT_FOUND', 'Servico nao encontrado.', 404);
+  }
+
+  assertCanReadService(authUser, existing);
+
+  if (existing.financial_status === 'PAGO') {
+    return existing;
+  }
+
+  const connection = await repository.getConnection();
+  const paymentAt = payload.payment_at ? new Date(payload.payment_at) : new Date();
+
+  try {
+    await connection.beginTransaction();
+
+    const current = await repository.findByIdForUpdate(connection, id);
+    if (!current) {
+      throw new AppError('SERVICE_NOT_FOUND', 'Servico nao encontrado.', 404);
+    }
+
+    await repository.applyTransition(connection, id, {
+      operational_status: current.operational_status,
+      financial_status: 'PAGO',
+      performed_at: current.performed_at,
+      payment_at: paymentAt,
+      amount_paid: current.amount_total,
+      amount_balance: 0,
+    });
+
+    await repository.createStatusHistory(connection, {
+      service_id: id,
+      previous_operational_status: current.operational_status,
+      previous_financial_status: current.financial_status,
+      new_operational_status: current.operational_status,
+      new_financial_status: 'PAGO',
+      transition_type: 'CONFIRMAR_PAGAMENTO',
+      changed_by: authUser.id,
+      reason: payload.reason || null,
+    });
+
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  return repository.findById(id);
+}
+
+async function promoteReservation(authUser, id, payload = {}) {
+  return transition(authUser, id, {
+    transition_type: 'RESERVA_PARA_CONVERTIDO',
+    target_operational_status: 'CONVERTIDO_TITULAR',
+    reason: payload.reason || null,
+  });
+}
+
+async function syncFinancialStatusByCalendar(referenceDate = new Date()) {
+  const dateKey = toLocalDateKey(referenceDate);
+  const pendingUpdated = await repository.syncPendingFinancialStatuses(dateKey);
+  const overdueUpdated = await repository.syncOverdueFinancialStatuses(dateKey);
+
+  return {
+    date: dateKey,
+    pending_updated: pendingUpdated,
+    overdue_updated: overdueUpdated,
+  };
+}
+
 async function remove(authUser, id) {
   assertValidId(id);
 
@@ -380,9 +519,13 @@ async function remove(authUser, id) {
 
 module.exports = {
   create,
+  previewFinancial,
   list,
   getById,
   update,
   transition,
+  confirmPayment,
+  promoteReservation,
+  syncFinancialStatusByCalendar,
   remove,
 };

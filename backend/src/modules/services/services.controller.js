@@ -1,9 +1,14 @@
-﻿const asyncHandler = require('../../utils/async-handler');
+const asyncHandler = require('../../utils/async-handler');
 const service = require('./services.service');
 
 const create = asyncHandler(async (req, res) => {
   const data = await service.create(req.user, req.body);
   res.status(201).json({ data, meta: null, errors: null });
+});
+
+const previewFinancial = asyncHandler(async (req, res) => {
+  const data = await service.previewFinancial(req.user, req.body);
+  res.status(200).json({ data, meta: null, errors: null });
 });
 
 const list = asyncHandler(async (req, res) => {
@@ -26,6 +31,16 @@ const transition = asyncHandler(async (req, res) => {
   res.status(200).json({ data, meta: null, errors: null });
 });
 
+const confirmPayment = asyncHandler(async (req, res) => {
+  const data = await service.confirmPayment(req.user, req.params.id, req.body);
+  res.status(200).json({ data, meta: null, errors: null });
+});
+
+const promoteReservation = asyncHandler(async (req, res) => {
+  const data = await service.promoteReservation(req.user, req.params.id, req.body);
+  res.status(200).json({ data, meta: null, errors: null });
+});
+
 const remove = asyncHandler(async (req, res) => {
   await service.remove(req.user, req.params.id);
   res.status(204).send();
@@ -33,9 +48,12 @@ const remove = asyncHandler(async (req, res) => {
 
 module.exports = {
   create,
+  previewFinancial,
   list,
   getById,
   update,
   transition,
+  confirmPayment,
+  promoteReservation,
   remove,
 };

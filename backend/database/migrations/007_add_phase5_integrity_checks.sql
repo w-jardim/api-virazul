@@ -42,7 +42,7 @@ SET @constraint_exists := (
 );
 SET @sql := IF(
   @constraint_exists = 0,
-  'ALTER TABLE services ADD CONSTRAINT chk_services_operational_status CHECK (operational_status IN (''AGENDADO'', ''TITULAR'', ''RESERVA'', ''CONVERTIDO_TITULAR'', ''REALIZADO'', ''FALTOU'', ''CANCELADO'', ''NAO_CONVERTIDO''))',
+  'ALTER TABLE services ADD CONSTRAINT chk_services_operational_status CHECK (operational_status IN (''TITULAR'', ''RESERVA'', ''CONVERTIDO_TITULAR'', ''REALIZADO'', ''FALTOU'', ''CANCELADO'', ''NAO_CONVERTIDO''))',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;

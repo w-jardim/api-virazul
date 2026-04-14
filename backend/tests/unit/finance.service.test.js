@@ -145,11 +145,11 @@ describe('Finance Service Unit', () => {
     expect(summary.total_pending).toBe(0);
   });
 
-  test('AGENDADO nao entra no consolidado principal', () => {
+  test('RESERVA nao entra no consolidado principal', () => {
     const summary = financeService.calculateSummaryFromServices(
       [
         makeBaseService({
-          operational_status: 'AGENDADO',
+          operational_status: 'RESERVA',
           financial_status: 'PREVISTO',
           amount_total: 300,
         }),

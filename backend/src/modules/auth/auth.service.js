@@ -38,6 +38,7 @@ async function login(email, password) {
       name: user.name,
       email: user.email,
       role: user.role,
+      rank_group: user.rank_group || null,
     },
   };
 }

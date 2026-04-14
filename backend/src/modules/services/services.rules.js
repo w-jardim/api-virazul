@@ -1,23 +1,73 @@
-﻿const AppError = require('../../utils/app-error');
+const AppError = require('../../utils/app-error');
 
 const DURATION_ALLOWED = [6, 8, 12, 24];
-
+const INITIAL_OPERATIONAL_STATUSES = ['TITULAR', 'RESERVA'];
 const OPERATIONAL_STATUSES = [
-  'AGENDADO',
-  'TITULAR',
-  'RESERVA',
+  ...INITIAL_OPERATIONAL_STATUSES,
   'CONVERTIDO_TITULAR',
   'REALIZADO',
   'FALTOU',
   'CANCELADO',
   'NAO_CONVERTIDO',
 ];
-
-const FINANCIAL_STATUSES = ['PREVISTO', 'PAGO', 'PAGO_PARCIAL', 'NAO_PAGO'];
+const FINANCIAL_STATUSES = [
+  'PREVISTO',
+  'PENDENTE',
+  'EM_ATRASO',
+  'PAGO',
+  'PAGO_PARCIAL',
+  'NAO_PAGO',
+];
+const SERVICE_SCOPES = [
+  'ORDINARY',
+  'RAS_VOLUNTARY',
+  'RAS_COMPULSORY',
+  'PROEIS',
+  'SEGURANCA_PRESENTE',
+  'OTHER',
+];
 
 function toMoney(value) {
   const numeric = Number(value ?? 0);
   return Number.isFinite(numeric) ? Number(numeric.toFixed(2)) : 0;
+}
+
+function parseAccountingRules(input) {
+  if (!input) {
+    return {};
+  }
+
+  if (typeof input === 'string') {
+    try {
+      return JSON.parse(input);
+    } catch (error) {
+      return {};
+    }
+  }
+
+  return typeof input === 'object' ? input : {};
+}
+
+function resolveServiceScope(serviceType) {
+  const rules = parseAccountingRules(serviceType?.accounting_rules);
+  const scope = String(rules.service_scope || '').trim().toUpperCase();
+  if (SERVICE_SCOPES.includes(scope)) {
+    return scope;
+  }
+
+  const key = String(serviceType?.key || '').trim().toLowerCase();
+  const category = String(serviceType?.category || '').trim().toUpperCase();
+
+  if (key === 'ordinary_shift' || category === 'ORDINARY') return 'ORDINARY';
+  if (key === 'ras_voluntary') return 'RAS_VOLUNTARY';
+  if (key === 'ras_compulsory') return 'RAS_COMPULSORY';
+  if (key === 'proeis' || category === 'PROEIS') return 'PROEIS';
+  if (key === 'seguranca_presente' || category === 'SEGURANCA_PRESENTE') return 'SEGURANCA_PRESENTE';
+  return 'OTHER';
+}
+
+function isFinancialExtraScope(serviceScope) {
+  return !['ORDINARY'].includes(serviceScope);
 }
 
 function isValidDuration(hours) {
@@ -132,7 +182,6 @@ function isOperationalTransitionAllowed(currentStatus, targetStatus) {
   }
 
   const allowed = {
-    AGENDADO: ['TITULAR', 'CANCELADO'],
     TITULAR: ['REALIZADO', 'FALTOU', 'CANCELADO'],
     RESERVA: ['CONVERTIDO_TITULAR', 'NAO_CONVERTIDO', 'CANCELADO'],
     CONVERTIDO_TITULAR: ['REALIZADO', 'FALTOU', 'CANCELADO'],
@@ -193,8 +242,13 @@ function assertFinancialCompatibilityWithOperational(operationalStatus, financia
 
 module.exports = {
   DURATION_ALLOWED,
+  INITIAL_OPERATIONAL_STATUSES,
   OPERATIONAL_STATUSES,
   FINANCIAL_STATUSES,
+  SERVICE_SCOPES,
+  parseAccountingRules,
+  resolveServiceScope,
+  isFinancialExtraScope,
   isValidDuration,
   assertValidDuration,
   calculateAmounts,
@@ -205,4 +259,5 @@ module.exports = {
   isOperationalTransitionAllowed,
   assertOperationalTransition,
   assertFinancialCompatibilityWithOperational,
+  toMoney,
 };

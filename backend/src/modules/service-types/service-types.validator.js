@@ -1,7 +1,7 @@
-﻿const Joi = require('joi');
+const Joi = require('joi');
 const AppError = require('../../utils/app-error');
 
-const ALLOWED_CATEGORIES = ['ORDINARY', 'RAS', 'PROEIS', 'OTHER'];
+const ALLOWED_CATEGORIES = ['ORDINARY', 'RAS', 'PROEIS', 'SEGURANCA_PRESENTE', 'OTHER'];
 
 const createServiceTypeSchema = Joi.object({
   key: Joi.string().trim().lowercase().pattern(/^[a-z0-9_]+$/).min(3).max(100).required(),

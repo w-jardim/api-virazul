@@ -13,7 +13,17 @@ jest.mock('../../src/modules/services/services.repository', () => ({
   findByIdForUpdate: jest.fn(),
   applyTransition: jest.fn(),
   createStatusHistory: jest.fn(),
+  syncPendingFinancialStatuses: jest.fn(),
+  syncOverdueFinancialStatuses: jest.fn(),
   findOverlaps: jest.fn(),
+  findActiveBasePricing: jest.fn(),
+  findActiveFinancialRule: jest.fn(),
+}));
+
+jest.mock('../../src/modules/pricing/pricing.repository', () => ({
+  findUserRankGroup: jest.fn(async () => null),
+  VALID_RANK_GROUPS: ['OFICIAIS_SUPERIORES', 'CAPITAO_TENENTE', 'SUBTENENTE_SARGENTO', 'CABO_SOLDADO'],
+  VALID_SERVICE_SCOPES: ['RAS', 'PROEIS', 'SEGURANCA_PRESENTE', 'OUTROS'],
 }));
 
 const repository = require('../../src/modules/services/services.repository');
@@ -76,7 +86,7 @@ describe('Services Integration', () => {
         service_type_id: 2,
         start_at: '2026-04-10T08:00:00.000Z',
         duration_hours: 12,
-        operational_status: 'AGENDADO',
+        operational_status: 'TITULAR',
         financial_status: 'PREVISTO',
         amount_base: 120,
       });
@@ -141,10 +151,10 @@ describe('Services Integration', () => {
         service_type_id: 2,
         start_at: '2026-04-10T08:00:00.000Z',
         duration_hours: 12,
-        operational_status: 'AGENDADO',
+        operational_status: 'TITULAR',
         financial_status: 'PREVISTO',
         amount_base: 100,
-        amount_discount: 200,
+        amount_discount: 500,
       });
 
     expect(response.status).toBe(400);
@@ -165,10 +175,10 @@ describe('Services Integration', () => {
         service_type_id: 2,
         start_at: '2026-04-10T08:00:00.000Z',
         duration_hours: 12,
-        operational_status: 'AGENDADO',
+        operational_status: 'TITULAR',
         financial_status: 'PREVISTO',
         amount_base: 100,
-        amount_paid: 120,
+        amount_paid: 500,
       });
 
     expect(response.status).toBe(400);
@@ -400,6 +410,69 @@ describe('Services Integration', () => {
 
     expect(response.status).toBe(200);
     expect(repository.createStatusHistory).toHaveBeenCalledTimes(1);
+  });
+
+  test('confirmar pagamento pela rota dedicada', async () => {
+    const state = {
+      service: makeBaseService({ operational_status: 'TITULAR', financial_status: 'PENDENTE' }),
+    };
+    const connection = {
+      beginTransaction: jest.fn(),
+      commit: jest.fn(),
+      rollback: jest.fn(),
+      release: jest.fn(),
+    };
+
+    repository.findById
+      .mockResolvedValueOnce(state.service)
+      .mockResolvedValueOnce({
+        ...state.service,
+        financial_status: 'PAGO',
+        amount_paid: 100,
+        amount_balance: 0,
+      });
+    repository.getConnection.mockResolvedValue(connection);
+    repository.findByIdForUpdate.mockResolvedValue(state.service);
+    repository.applyTransition.mockResolvedValue();
+    repository.createStatusHistory.mockResolvedValue();
+
+    const response = await request(app)
+      .post('/api/v1/services/101/confirm-payment')
+      .set('Authorization', authHeader({ id: 2, email: 'policial@viraazul.local', role: 'POLICE' }))
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.financial_status).toBe('PAGO');
+    expect(repository.createStatusHistory).toHaveBeenCalledWith(
+      connection,
+      expect.objectContaining({ transition_type: 'CONFIRMAR_PAGAMENTO' })
+    );
+  });
+
+  test('promover reserva para titular pela rota dedicada', async () => {
+    const state = { service: makeBaseService({ operational_status: 'RESERVA', financial_status: 'PENDENTE' }) };
+    const connection = {
+      beginTransaction: jest.fn(),
+      commit: jest.fn(),
+      rollback: jest.fn(),
+      release: jest.fn(),
+    };
+
+    repository.findById
+      .mockResolvedValueOnce(state.service)
+      .mockResolvedValueOnce({ ...state.service, operational_status: 'CONVERTIDO_TITULAR' });
+    repository.getConnection.mockResolvedValue(connection);
+    repository.findByIdForUpdate.mockResolvedValue(state.service);
+    repository.applyTransition.mockResolvedValue();
+    repository.createStatusHistory.mockResolvedValue();
+
+    const response = await request(app)
+      .post('/api/v1/services/101/promote-reservation')
+      .set('Authorization', authHeader({ id: 2, email: 'policial@viraazul.local', role: 'POLICE' }))
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.operational_status).toBe('CONVERTIDO_TITULAR');
   });
 });
 

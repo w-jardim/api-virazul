@@ -327,7 +327,7 @@ describe('Alerts and Dashboard Integration', () => {
       service_type_name: 'RAS Voluntario',
       start_at: new Date().toISOString(),
       duration_hours: 12,
-      operational_status: 'AGENDADO',
+      operational_status: 'TITULAR',
       financial_status: 'PREVISTO',
       deleted_at: null,
     });
@@ -355,7 +355,7 @@ describe('Alerts and Dashboard Integration', () => {
       service_type_name: 'RAS Voluntario',
       start_at: past,
       duration_hours: 12,
-      operational_status: 'AGENDADO',
+      operational_status: 'TITULAR',
       financial_status: 'PREVISTO',
       deleted_at: null,
     });
