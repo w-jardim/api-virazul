@@ -29,8 +29,33 @@ const updateProfileSchema = Joi.object({
   rank_group: Joi.string().optional().allow(null, ''),
 }).unknown(false);
 
+const registerSchema = Joi.object({
+  name: Joi.string().min(1).required(),
+  email: Joi.string().email({ tlds: { allow: false } }).required(),
+  password: Joi.string().min(6).required(),
+  password_confirm: Joi.any().valid(Joi.ref('password')).required().messages({ 'any.only': 'Confirmação de senha não corresponde.' }),
+}).unknown(false);
+
 function validateUpdateProfile(req, res, next) {
   const { error, value } = updateProfileSchema.validate(req.body, {
+    abortEarly: false,
+    stripUnknown: true,
+  });
+
+  if (error) {
+    const message = error.details.map((item) => item.message).join('; ');
+    return next(new AppError('VALIDATION_ERROR', message, 400));
+  }
+
+  // remove password_confirm from payload
+  if (value.password_confirm !== undefined) delete value.password_confirm;
+
+  req.body = value;
+  return next();
+}
+
+function validateRegister(req, res, next) {
+  const { error, value } = registerSchema.validate(req.body, {
     abortEarly: false,
     stripUnknown: true,
   });
@@ -50,4 +75,5 @@ function validateUpdateProfile(req, res, next) {
 module.exports = {
   validateLogin,
   validateUpdateProfile,
+  validateRegister,
 };
