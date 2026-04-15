@@ -39,6 +39,9 @@ async function login(email, password) {
       email: user.email,
       role: user.role,
       rank_group: user.rank_group || null,
+      subscription: user.subscription || 'free',
+      payment_due_date: user.payment_due_date || null,
+      created_at: user.created_at,
     },
   };
 }

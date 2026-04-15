@@ -2,7 +2,7 @@
 
 async function findByEmail(email) {
   const [rows] = await pool.query(
-    `SELECT id, name, email, password_hash, role, rank_group
+    `SELECT id, name, email, password_hash, role, rank_group, subscription, payment_due_date, created_at
        FROM users
       WHERE email = ?
         AND deleted_at IS NULL

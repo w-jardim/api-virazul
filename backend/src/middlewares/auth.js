@@ -2,6 +2,7 @@ const AppError = require('../utils/app-error');
 const jwtUtils = require('../utils/jwt');
 const logger = require('../utils/logger');
 const { enforceSubscription } = require('./subscription-guard');
+const { enforcePlan } = require('./plan-guard');
 
 module.exports = async function authMiddleware(req, res, next) {
   const header = req.headers.authorization;
@@ -30,7 +31,10 @@ module.exports = async function authMiddleware(req, res, next) {
       email: payload.email,
       role: payload.role,
     };
-    return enforceSubscription(req, res, next);
+    return enforceSubscription(req, res, (err) => {
+      if (err) return next(err);
+      return enforcePlan(req, res, next);
+    });
   } catch (error) {
     logger.warn('auth.invalid_token', {
       request_id: req.requestId || null,
