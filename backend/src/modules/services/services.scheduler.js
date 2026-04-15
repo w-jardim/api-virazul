@@ -1,7 +1,7 @@
 const logger = require('../../utils/logger');
 const service = require('./services.service');
 
-const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+const ONE_HOUR_MS = 1 * 60 * 60 * 1000;
 
 function runSyncCycle() {
   return service
@@ -21,7 +21,7 @@ function startFinancialStatusScheduler() {
   void runSyncCycle();
   const intervalId = setInterval(() => {
     void runSyncCycle();
-  }, SIX_HOURS_MS);
+  }, ONE_HOUR_MS);
 
   return intervalId;
 }

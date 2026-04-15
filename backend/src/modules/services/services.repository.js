@@ -288,10 +288,9 @@ async function syncPendingFinancialStatuses(referenceDate) {
             version = version + 1
       WHERE deleted_at IS NULL
         AND payment_due_date IS NOT NULL
-        AND financial_status IN ('PREVISTO', 'NAO_PAGO', 'PAGO_PARCIAL')
-        AND payment_due_date <= ?
-        AND payment_due_date >= DATE_SUB(?, INTERVAL 5 DAY)`,
-    [referenceDate, referenceDate]
+        AND financial_status IN ('PREVISTO')
+        AND payment_due_date = DATE(?)`,
+    [referenceDate]
   );
 
   return result.affectedRows || 0;
@@ -304,8 +303,8 @@ async function syncOverdueFinancialStatuses(referenceDate) {
             version = version + 1
       WHERE deleted_at IS NULL
         AND payment_due_date IS NOT NULL
-        AND financial_status IN ('PREVISTO', 'NAO_PAGO', 'PAGO_PARCIAL', 'PENDENTE')
-        AND payment_due_date < DATE_SUB(?, INTERVAL 5 DAY)`,
+        AND financial_status IN ('PREVISTO', 'PENDENTE')
+        AND payment_due_date < DATE(?)`,
     [referenceDate]
   );
 
