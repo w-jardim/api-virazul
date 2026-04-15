@@ -1,0 +1,90 @@
+Revisão e Correção — Fase F6: Insights e Inteligência (virazul)
+Data: 2026-04-11
+
+Escopo
+Aplicar correções de confiabilidade, consistência temporal, qualidade visual e robustez de testes na feature de insights, sem alterar o escopo funcional da Fase F6.
+
+Arquivos criados (1)
+- frontend/src/features/insights/engine/thresholds.ts
+  INSIGHT_THRESHOLDS — todos os percentuais/limites centralizados
+  INSIGHT_LIMITS — maxPerCategory: 5, maxTotal: 12
+  SEVERITY_PRIORITY — ordenação (critical > warning > info > positive)
+
+Arquivos modificados (7)
+
+1. insights.types.ts
+   - Adicionado campo opcional `action?: { label: string; to: string }` em Insight
+   - Novos tipos: SourceName, SourceStatus (para rastreamento de erro parcial)
+
+2. generate-insights.ts
+   - Thresholds consumidos de thresholds.ts (nenhum valor mágico inline)
+   - CTAs (action) adicionados em todos os insights acionáveis:
+     * Alertas financeiros → "Revisar financeiro" /finance
+     * Faltas/cancelamentos → "Ver agenda" /agenda
+     * Baixa conversão → "Ver agenda" /agenda
+     * Produtividade → "Abrir planejamento" /planning
+     * Meta quase atingida → "Abrir planejamento" /planning
+     * Combinações → "Abrir planejamento" /planning
+     * Serviços em reserva → "Ver agenda" /agenda
+     * Combinação ideal → "Abrir planejamento" /planning
+     * Pendências → "Revisar financeiro" /finance
+   - Nova função exportada: prioritizeInsights(raw, limits)
+     * Ordena por SEVERITY_PRIORITY (critical primeiro)
+     * Limita por categoria (maxPerCategory) e total (maxTotal)
+     * generateInsights() já retorna resultado priorizado
+   - Textos PT-BR verificados sem mojibake (acentos corretos)
+   - Insights atuam como leitura/recomendação, apontando para planning quando necessário
+
+3. useInsights.ts
+   - Período unificado: useMemo calcula { month, start_date, end_date } uma vez
+     * month → currentMonthLocal() para finance summary
+     * start_date/end_date → startOfMonthLocal()/todayLocal() para reports
+     * Todas as fontes consultam o mesmo intervalo temporal
+   - Erro parcial granular:
+     * sourceStatuses: array com { name, label, isError, isLoading } por fonte
+     * failedSources: fontes com isError=true
+     * isAllError: true somente se TODAS falharam
+     * hasPartialError: true se pelo menos uma falhou mas não todas
+   - Retorna: isLoading, isAllError, hasPartialError, failedSources, sourceStatuses, period, insights, byCategory
+
+4. InsightComponents.tsx
+   - InsightCard: renderiza CTA como Link (react-router-dom) quando action existe
+   - Novo componente: SourceWarningBanner
+     * Exibe banner amarelo listando fontes que falharam
+     * Texto: "Os insights abaixo foram gerados com dados parciais..."
+     * role="alert" para acessibilidade
+
+5. InsightsPage.tsx
+   - Exibe período (start_date a end_date) no header
+   - Estado de erro total: mostrado somente quando isAllError=true
+   - Estado parcial: SourceWarningBanner + insights com dados disponíveis
+   - Estado vazio: "Nenhum insight disponível" (sem erro parcial)
+   - Insights não duplicam funções de planejamento (apontam para /planning como recomendação)
+
+6. generate-insights.test.ts (21 testes)
+   - Testes de alertas: overdue warning, overdue critical, faltas, baixa conversão, limite mínimo de reservas, produtividade
+   - Testes de oportunidades: meta quase atingida + CTA, boa taxa de recebimento
+   - Testes de recomendações: combinação ideal + CTA, pendências + CTA financeiro
+   - Testes de tendências: realização, evolução financeira
+   - Teste PT-BR: nenhum mojibake (sem Ã, sem \\u00)
+   - Teste misto: múltiplas fontes → 4 categorias presentes
+   - Testes de prioritizeInsights:
+     * Ordenação por severidade (critical primeiro)
+     * Limite por categoria
+     * Limite total
+     * Preserva itens de maior severidade ao cortar
+     * Resultado de generateInsights() respeita maxTotal
+
+7. insights-page.test.tsx (11 testes)
+   - MemoryRouter para suporte a Link (CTAs)
+   - Testes: título + período, skeletons, erro total, erro parcial (banner), insights com erro parcial, estado vazio, 4 seções, cards individuais, badges de métrica, links de CTA com href correto, textos PT-BR corretos
+
+Resultado
+- 0 erros TypeScript em todos os 8 arquivos
+- 32/32 testes passando (21 engine + 11 page)
+- 3 falhas pré-existentes (planning-page, finance-page, reports-page) não relacionadas à F6
+- Nenhuma dependência nova adicionada
+- Stack, planning, finance e reports não afetados
+
+---
+Fim da revisão.
