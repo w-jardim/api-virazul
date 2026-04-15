@@ -44,6 +44,7 @@ module.exports = {
   login,
   me,
   updateProfile,
+  register,
 };
 
 async function register(req, res, next) {
