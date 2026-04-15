@@ -6,8 +6,27 @@ const loginSchema = Joi.object({
   password: Joi.string().min(6).required(),
 });
 
+const googleLoginSchema = Joi.object({
+  id_token: Joi.string().min(10).required(),
+}).unknown(false);
+
 function validateLogin(req, res, next) {
   const { error, value } = loginSchema.validate(req.body, {
+    abortEarly: false,
+    stripUnknown: true,
+  });
+
+  if (error) {
+    const message = error.details.map((item) => item.message).join('; ');
+    return next(new AppError('VALIDATION_ERROR', message, 400));
+  }
+
+  req.body = value;
+  return next();
+}
+
+function validateGoogleLogin(req, res, next) {
+  const { error, value } = googleLoginSchema.validate(req.body, {
     abortEarly: false,
     stripUnknown: true,
   });
@@ -74,6 +93,7 @@ function validateRegister(req, res, next) {
 
 module.exports = {
   validateLogin,
+  validateGoogleLogin,
   validateUpdateProfile,
   validateRegister,
 };

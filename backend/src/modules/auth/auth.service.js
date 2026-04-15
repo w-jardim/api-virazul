@@ -1,34 +1,15 @@
-﻿const AppError = require('../../utils/app-error');
+const AppError = require('../../utils/app-error');
 const passwordUtils = require('../../utils/password');
 const jwtUtils = require('../../utils/jwt');
 const authRepository = require('./auth.repository');
+const googleTokenService = require('./google-token.service');
 const logger = require('../../utils/logger');
 
-async function login(email, password) {
-  const user = await authRepository.findByEmail(email);
-
-  if (!user) {
-    logger.warn('auth.login.failed', { email });
-    throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email ou senha invalidos.', 401);
-  }
-
-  const isPasswordValid = await passwordUtils.comparePassword(password, user.password_hash);
-  if (!isPasswordValid) {
-    logger.warn('auth.login.failed', { email, user_id: user.id });
-    throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email ou senha invalidos.', 401);
-  }
-
-  await authRepository.updateLastLogin(user.id);
-
+function buildSession(user) {
   const token = jwtUtils.sign({
     id: user.id,
     email: user.email,
     role: user.role,
-  });
-
-  logger.info('auth.login.success', {
-    user_id: user.id,
-    email: user.email,
   });
 
   return {
@@ -46,6 +27,87 @@ async function login(email, password) {
   };
 }
 
+async function login(email, password) {
+  const user = await authRepository.findByEmail(email);
+
+  if (!user) {
+    logger.warn('auth.login.failed', { email });
+    throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email ou senha invalidos.', 401);
+  }
+
+  const isPasswordValid = await passwordUtils.comparePassword(password, user.password_hash);
+  if (!isPasswordValid) {
+    logger.warn('auth.login.failed', { email, user_id: user.id });
+    throw new AppError('AUTH_INVALID_CREDENTIALS', 'Email ou senha invalidos.', 401);
+  }
+
+  await authRepository.updateLastLogin(user.id);
+
+  logger.info('auth.login.success', {
+    user_id: user.id,
+    email: user.email,
+  });
+
+  return buildSession(user);
+}
+
+async function loginWithGoogle(idToken) {
+  const payload = await googleTokenService.verifyIdToken(idToken);
+  const email = payload.email ? String(payload.email).toLowerCase() : '';
+  const googleSub = payload.sub ? String(payload.sub) : '';
+  const emailVerified = Boolean(payload.email_verified);
+
+  if (!email || !googleSub || !emailVerified) {
+    logger.warn('auth.google.claims.invalid', {
+      email,
+      has_sub: Boolean(googleSub),
+      email_verified: emailVerified,
+    });
+    throw new AppError(
+      'AUTH_GOOGLE_INVALID_CLAIMS',
+      'Conta Google sem dados obrigatorios verificados.',
+      401
+    );
+  }
+
+  let user = await authRepository.findByGoogleSub(googleSub);
+
+  if (!user) {
+    const userByEmail = await authRepository.findByEmail(email);
+    if (userByEmail) {
+      if (userByEmail.google_sub && userByEmail.google_sub !== googleSub) {
+        throw new AppError(
+          'AUTH_GOOGLE_CONFLICT',
+          'Conta Google diferente ja vinculada a este email.',
+          409
+        );
+      }
+
+      if (!userByEmail.google_sub) {
+        await authRepository.linkGoogleSubByUserId(userByEmail.id, googleSub);
+      }
+
+      user = await authRepository.findByEmail(email);
+    } else {
+      const fallbackName = email.split('@')[0];
+      user = await authRepository.createGoogleUser({
+        name: payload.name || fallbackName,
+        email,
+        googleSub,
+      });
+    }
+  }
+
+  if (!user) {
+    throw new AppError('AUTH_GOOGLE_FAILED', 'Falha ao autenticar com Google.', 500);
+  }
+
+  await authRepository.updateLastLogin(user.id);
+  logger.info('auth.google.login.success', { user_id: user.id, email });
+
+  return buildSession(user);
+}
+
 async function me(userId) {
   const user = await authRepository.findSafeById(userId);
 
@@ -59,5 +121,6 @@ async function me(userId) {
 
 module.exports = {
   login,
+  loginWithGoogle,
   me,
 };

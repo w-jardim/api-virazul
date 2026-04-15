@@ -17,6 +17,17 @@ const login = asyncHandler(async (req, res) => {
   });
 });
 
+const loginWithGoogle = asyncHandler(async (req, res) => {
+  const { id_token } = req.body;
+  const result = await authService.loginWithGoogle(id_token);
+
+  res.status(200).json({
+    data: result,
+    meta: null,
+    errors: null,
+  });
+});
+
 const me = asyncHandler(async (req, res) => {
   const user = await authService.me(req.user.id);
 
@@ -42,6 +53,7 @@ async function updateProfile(req, res, next) {
 
 module.exports = {
   login,
+  loginWithGoogle,
   me,
   updateProfile,
   register,

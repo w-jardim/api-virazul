@@ -91,6 +91,10 @@ const config = {
       'inactive',
     ]).map((item) => item.toLowerCase()),
   },
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+    enabled: Boolean(process.env.GOOGLE_CLIENT_ID),
+  },
 };
 
 module.exports = config;
