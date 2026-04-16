@@ -16,6 +16,11 @@ const list = asyncHandler(async (req, res) => {
   res.status(200).json({ data, meta: null, errors: null });
 });
 
+const getDateRange = asyncHandler(async (req, res) => {
+  const data = await service.getDateRange(req.user, req.query);
+  res.status(200).json({ data, meta: null, errors: null });
+});
+
 const getById = asyncHandler(async (req, res) => {
   const data = await service.getById(req.user, req.params.id);
   res.status(200).json({ data, meta: null, errors: null });
@@ -50,6 +55,7 @@ module.exports = {
   create,
   previewFinancial,
   list,
+  getDateRange,
   getById,
   update,
   transition,

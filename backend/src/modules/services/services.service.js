@@ -105,14 +105,14 @@ async function assertNoTimeConflict({ userId, startAt, durationHours, excludeSer
   if (overlaps.length > 0) {
     throw new AppError(
       'SCHEDULE_CONFLICT',
-      'é preciso intervalo de 8h entre serviços.',
+      'Ã© preciso intervalo de 8h entre serviÃ§os.',
       409
     );
   }
 }
 
 async function assertMinRestInterval({ userId, startAt, durationHours, excludeServiceId }) {
-  // This rule is NOT bypassable by `force` — it's enforced for user safety.
+  // This rule is NOT bypassable by `force` â€” it's enforced for user safety.
   const prefs = await repository.getUserPlanningPreferences(userId);
   let minRest = 8; // default 8 hours
 
@@ -163,7 +163,7 @@ async function assertMinRestInterval({ userId, startAt, durationHours, excludeSe
   if (newStart < minAllowedStart) {
     throw new AppError(
       'MIN_REST_VIOLATION',
-      'é preciso intervalo de 8h entre serviços.',
+      'Ã© preciso intervalo de 8h entre serviÃ§os.',
       400
     );
   }
@@ -354,6 +354,23 @@ async function list(authUser, query) {
   return repository.list(filters);
 }
 
+async function getDateRange(authUser, query = {}) {
+  const queryUserId = parseOptionalPositiveInt(query.user_id, 'query.user_id');
+
+  if (queryUserId && !isAdminMaster(authUser) && queryUserId !== Number(authUser.id)) {
+    throw new AppError('FORBIDDEN', 'Usuario comum nao pode listar servicos de outro usuario.', 403);
+  }
+
+  const filters = {
+    userId: isAdminMaster(authUser) ? queryUserId : authUser.id,
+  };
+
+  const range = await repository.getDateRange(filters);
+  return {
+    start_date: range?.start_date || null,
+    end_date: range?.end_date || null,
+  };
+}
 async function getById(authUser, id) {
   assertValidId(id);
 
@@ -652,6 +669,7 @@ module.exports = {
   create,
   previewFinancial,
   list,
+  getDateRange,
   getById,
   update,
   transition,

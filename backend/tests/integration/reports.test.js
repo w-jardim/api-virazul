@@ -244,4 +244,47 @@ describe('Reports Integration', () => {
     expect(response.body.data.reservation_metrics.total_reservations).toBe(1);
     expect(response.body.data.reservation_metrics.converted_reservations).toBe(0);
   });
+  test('relatorio financeiro inclui PENDENTE e EM_ATRASO nos totais', async () => {
+    mockState.financialServices = [
+      {
+        id: 10,
+        user_id: 41,
+        start_at: '2026-05-01T10:00:00.000Z',
+        operational_status: 'REALIZADO',
+        financial_status: 'PENDENTE',
+        amount_total: 110,
+        amount_paid: 0,
+        amount_balance: 110,
+        payment_due_date: '2026-06-10',
+        service_type_key: 'ras_voluntary',
+        service_type_category: 'RAS',
+        counts_in_financial: 1,
+      },
+      {
+        id: 11,
+        user_id: 41,
+        start_at: '2026-05-02T10:00:00.000Z',
+        operational_status: 'TITULAR',
+        financial_status: 'EM_ATRASO',
+        amount_total: 90,
+        amount_paid: 0,
+        amount_balance: 90,
+        payment_due_date: '2026-06-11',
+        service_type_key: 'proeis',
+        service_type_category: 'PROEIS',
+        counts_in_financial: 1,
+      },
+    ];
+
+    const response = await request(app)
+      .get('/api/v1/reports/financial?start_date=2026-05-01&end_date=2026-05-31')
+      .set('Authorization', authHeader({ id: 41, role: 'POLICE', email: 'u41@local' }));
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.summary.total_expected).toBe(200);
+    expect(response.body.data.summary.total_pending).toBe(200);
+    expect(response.body.data.summary.total_overdue).toBe(90);
+    expect(response.body.data.by_financial_status.PENDENTE).toBe(110);
+    expect(response.body.data.by_financial_status.EM_ATRASO).toBe(90);
+  });
 });

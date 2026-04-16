@@ -177,4 +177,18 @@ describe('Finance Service Unit', () => {
     expect(summary.total_expected).toBe(0);
     expect(summary.total_received).toBe(0);
   });
+  test('PENDENTE e EM_ATRASO entram no pendente real', () => {
+    const summary = financeService.calculateSummaryFromServices(
+      [
+        makeBaseService({ financial_status: 'PENDENTE', amount_total: 90, amount_paid: 0, amount_balance: 90, payment_due_date: '2026-06-20' }),
+        makeBaseService({ id: 2, financial_status: 'EM_ATRASO', amount_total: 70, amount_paid: 0, amount_balance: 70, payment_due_date: '2026-06-20' }),
+      ],
+      new Date('2026-05-30T12:00:00.000Z')
+    );
+
+    expect(summary.total_pending).toBe(160);
+    expect(summary.total_overdue).toBe(70);
+    expect(summary.by_status.PENDENTE).toBe(90);
+    expect(summary.by_status.EM_ATRASO).toBe(70);
+  });
 });

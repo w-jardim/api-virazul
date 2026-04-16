@@ -3,6 +3,8 @@ const { FINANCIAL_STATUSES } = require('../services/services.rules');
 const { toDateKeyInTimeZone } = require('../alerts/alerts.time');
 
 const VALID_OPERATIONAL_FOR_FINANCE = ['TITULAR', 'CONVERTIDO_TITULAR', 'REALIZADO'];
+const PENDING_FINANCIAL_STATUSES = new Set(['NAO_PAGO', 'PENDENTE', 'EM_ATRASO']);
+const OVERDUE_FINANCIAL_STATUSES = new Set(['EM_ATRASO']);
 
 function toMoney(value) {
   const numeric = Number(value ?? 0);
@@ -47,8 +49,20 @@ function isFinanciallyRelevant(service) {
   );
 }
 
+function isPendingFinancialStatus(status) {
+  return PENDING_FINANCIAL_STATUSES.has(status);
+}
+
 function isOverdue(service, todayDateKey) {
-  if (service.financial_status !== 'NAO_PAGO' || !service.payment_due_date) {
+  if (!isPendingFinancialStatus(service.financial_status)) {
+    return false;
+  }
+
+  if (OVERDUE_FINANCIAL_STATUSES.has(service.financial_status)) {
+    return true;
+  }
+
+  if (!service.payment_due_date) {
     return false;
   }
 
@@ -111,7 +125,7 @@ function calculateSummaryFromServices(services, now = new Date()) {
       totalReceived = toMoney(totalReceived + safePaid);
     }
 
-    if (status === 'NAO_PAGO') {
+    if (isPendingFinancialStatus(status)) {
       totalPending = toMoney(totalPending + amountTotal);
       if (isOverdue(service, todayDateKey)) {
         totalOverdue = toMoney(totalOverdue + amountTotal);
@@ -168,7 +182,7 @@ function groupByServiceType(services, now = new Date()) {
       current.total_received = toMoney(current.total_received + safePaid);
     }
 
-    if (service.financial_status === 'NAO_PAGO') {
+    if (isPendingFinancialStatus(service.financial_status)) {
       current.total_pending = toMoney(current.total_pending + amountTotal);
       if (isOverdue(service, todayDateKey)) {
         current.total_overdue = toMoney(current.total_overdue + amountTotal);

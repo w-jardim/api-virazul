@@ -1,5 +1,6 @@
 FROM node:20-bullseye-slim AS deps
 WORKDIR /app
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 COPY package*.json ./
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	ca-certificates \

@@ -9,6 +9,7 @@ router.use(authMiddleware);
 
 router.post('/preview-financial', validator.validatePreviewFinancial, controller.previewFinancial);
 router.post('/', validator.validateCreate, controller.create);
+router.get('/date-range', validator.validateListQuery, controller.getDateRange);
 router.get('/', validator.validateListQuery, controller.list);
 router.get('/:id', validator.validateIdParam, controller.getById);
 router.put('/:id', validator.validateIdParam, validator.validateUpdate, controller.update);

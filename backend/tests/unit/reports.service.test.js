@@ -162,4 +162,39 @@ describe('Reports Service Unit', () => {
       other: 0,
     });
   });
+  test('relatorio financeiro trata PENDENTE e EM_ATRASO como valores reais', () => {
+    const result = reportsService.calculateFinancialSummary(
+      [
+        {
+          operational_status: 'REALIZADO',
+          financial_status: 'PENDENTE',
+          amount_total: 130,
+          amount_paid: 0,
+          amount_balance: 130,
+          payment_due_date: '2026-06-10',
+          service_type_key: 'ras_voluntary',
+          service_type_category: 'RAS',
+          counts_in_financial: 1,
+        },
+        {
+          operational_status: 'TITULAR',
+          financial_status: 'EM_ATRASO',
+          amount_total: 80,
+          amount_paid: 0,
+          amount_balance: 80,
+          payment_due_date: '2026-06-20',
+          service_type_key: 'proeis',
+          service_type_category: 'PROEIS',
+          counts_in_financial: 1,
+        },
+      ],
+      new Date('2026-05-30T12:00:00.000Z')
+    );
+
+    expect(result.summary.total_expected).toBe(210);
+    expect(result.summary.total_pending).toBe(210);
+    expect(result.summary.total_overdue).toBe(80);
+    expect(result.by_financial_status.PENDENTE).toBe(130);
+    expect(result.by_financial_status.EM_ATRASO).toBe(80);
+  });
 });

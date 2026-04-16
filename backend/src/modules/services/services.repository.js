@@ -143,6 +143,27 @@ async function list(filters) {
   return rows;
 }
 
+async function getDateRange(filters = {}) {
+  const where = ['deleted_at IS NULL'];
+  const params = [];
+
+  if (filters.userId) {
+    where.push('user_id = ?');
+    params.push(filters.userId);
+  }
+
+  const [rows] = await pool.query(
+    `SELECT
+       DATE_FORMAT(MIN(start_at), '%Y-%m-%d') AS start_date,
+       DATE_FORMAT(MAX(start_at), '%Y-%m-%d') AS end_date
+     FROM services
+     WHERE ${where.join(' AND ')}`,
+    params
+  );
+
+  return rows[0] || { start_date: null, end_date: null };
+}
+
 async function findById(id) {
   const [rows] = await pool.query(
     `SELECT s.*, st.\`key\` AS service_type_key, st.name AS service_type_name, st.category AS service_type_category,
@@ -267,7 +288,7 @@ async function createStatusHistory(connection, payload) {
       transition_type,
       changed_by,
       reason
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)` ,
     [
       payload.service_id,
       payload.previous_operational_status,
@@ -394,6 +415,7 @@ module.exports = {
   findActiveFinancialRule,
   createService,
   list,
+  getDateRange,
   findById,
   updateService,
   softDelete,

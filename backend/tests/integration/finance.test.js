@@ -330,4 +330,51 @@ describe('Finance Integration', () => {
     expect(response.status).toBe(200);
     expect(response.body.data.total_received).toBe(120);
   });
+  test('summary inclui PENDENTE e EM_ATRASO nos totais financeiros reais', async () => {
+    mockState.services = [
+      {
+        id: 40,
+        user_id: 16,
+        start_at: isoDate('2026-05-16'),
+        duration_hours: 12,
+        operational_status: 'REALIZADO',
+        financial_status: 'PENDENTE',
+        amount_total: 140,
+        amount_paid: 0,
+        amount_balance: 140,
+        payment_due_date: '2026-06-10',
+        service_type_key: 'ras_voluntary',
+        service_type_name: 'RAS Voluntario',
+        service_type_category: 'RAS',
+        counts_in_financial: 1,
+      },
+      {
+        id: 41,
+        user_id: 16,
+        start_at: isoDate('2026-05-17'),
+        duration_hours: 8,
+        operational_status: 'TITULAR',
+        financial_status: 'EM_ATRASO',
+        amount_total: 60,
+        amount_paid: 0,
+        amount_balance: 60,
+        payment_due_date: '2026-06-12',
+        service_type_key: 'proeis',
+        service_type_name: 'PROEIS',
+        service_type_category: 'PROEIS',
+        counts_in_financial: 1,
+      },
+    ];
+
+    const response = await request(app)
+      .get('/api/v1/finance/summary?month=2026-05')
+      .set('Authorization', authHeader({ id: 16, role: 'POLICE', email: 'user16@local' }));
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.total_expected).toBe(200);
+    expect(response.body.data.total_pending).toBe(200);
+    expect(response.body.data.total_overdue).toBe(60);
+    expect(response.body.data.by_status.PENDENTE).toBe(140);
+    expect(response.body.data.by_status.EM_ATRASO).toBe(60);
+  });
 });

@@ -5,6 +5,8 @@ const { toDateKeyInTimeZone } = require('../alerts/alerts.time');
 const OPERATIONAL_CONFIRM_STATUSES = ['TITULAR', 'CONVERTIDO_TITULAR', 'REALIZADO'];
 const FINANCIAL_RELEVANT_OPERATIONAL = ['TITULAR', 'CONVERTIDO_TITULAR', 'REALIZADO'];
 const KNOWN_SERVICE_TYPES = ['ras_voluntary', 'ras_compulsory', 'proeis', 'ordinary_shift', 'other'];
+const PENDING_FINANCIAL_STATUSES = new Set(['NAO_PAGO', 'PENDENTE', 'EM_ATRASO']);
+const OVERDUE_FINANCIAL_STATUSES = new Set(['EM_ATRASO']);
 
 function toMoney(value) {
   const numeric = Number(value ?? 0);
@@ -40,7 +42,6 @@ function normalizeDueDateKey(value) {
     return null;
   }
 
-  // DATE column must be treated as civil date, not timezone-shifted instant.
   const yyyy = String(parsed.getUTCFullYear());
   const mm = String(parsed.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(parsed.getUTCDate()).padStart(2, '0');
@@ -57,6 +58,23 @@ function isFinanciallyRelevant(service) {
     service.operational_status !== 'RESERVA' &&
     FINANCIAL_RELEVANT_OPERATIONAL.includes(service.operational_status)
   );
+}
+
+function isPendingFinancialStatus(status) {
+  return PENDING_FINANCIAL_STATUSES.has(status);
+}
+
+function isOverdueFinancialStatus(service, todayKey) {
+  if (!isPendingFinancialStatus(service.financial_status)) {
+    return false;
+  }
+
+  if (OVERDUE_FINANCIAL_STATUSES.has(service.financial_status)) {
+    return true;
+  }
+
+  const dueKey = normalizeDueDateKey(service.payment_due_date);
+  return Boolean(dueKey && dueKey < todayKey);
 }
 
 function groupCountsByStatus(items, field, statuses) {
@@ -135,10 +153,9 @@ function calculateFinancialSummary(services, now = new Date()) {
       totalReceived = toMoney(totalReceived + safeReceived);
     }
 
-    if (service.financial_status === 'NAO_PAGO') {
+    if (isPendingFinancialStatus(service.financial_status)) {
       totalPending = toMoney(totalPending + amountTotal);
-      const dueKey = normalizeDueDateKey(service.payment_due_date);
-      if (dueKey && dueKey < todayKey) {
+      if (isOverdueFinancialStatus(service, todayKey)) {
         totalOverdue = toMoney(totalOverdue + amountTotal);
       }
     }

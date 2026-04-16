@@ -1,4 +1,4 @@
-﻿const request = require('supertest');
+const request = require('supertest');
 const jwt = require('jsonwebtoken');
 
 jest.mock('../../src/modules/services/services.repository', () => ({
@@ -6,6 +6,7 @@ jest.mock('../../src/modules/services/services.repository', () => ({
   getUserPreferenceRuleB: jest.fn(),
   createService: jest.fn(),
   list: jest.fn(),
+  getDateRange: jest.fn(),
   findById: jest.fn(),
   updateService: jest.fn(),
   softDelete: jest.fn(),
@@ -474,5 +475,20 @@ describe('Services Integration', () => {
     expect(response.status).toBe(200);
     expect(response.body.data.operational_status).toBe('CONVERTIDO_TITULAR');
   });
-});
+  test('retorna intervalo do primeiro ao ultimo servico cadastrado', async () => {
+    repository.getDateRange.mockResolvedValue({
+      start_date: '2026-04-01',
+      end_date: '2026-04-16',
+    });
 
+    const response = await request(app)
+      .get('/api/v1/services/date-range')
+      .set('Authorization', authHeader({ id: 2, email: 'policial@viraazul.local', role: 'POLICE' }));
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual({
+      start_date: '2026-04-01',
+      end_date: '2026-04-16',
+    });
+  });
+});
