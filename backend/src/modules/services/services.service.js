@@ -105,9 +105,112 @@ async function assertNoTimeConflict({ userId, startAt, durationHours, excludeSer
   if (overlaps.length > 0) {
     throw new AppError(
       'SCHEDULE_CONFLICT',
-      'Existe conflito de horario com outro servico/escala. Use force=true para confirmar.',
+      'é preciso intervalo de 8h entre serviços.',
       409
     );
+  }
+}
+
+async function assertMinRestInterval({ userId, startAt, durationHours, excludeServiceId }) {
+  // This rule is NOT bypassable by `force` — it's enforced for user safety.
+  const prefs = await repository.getUserPlanningPreferences(userId);
+  let minRest = 8; // default 8 hours
+
+  try {
+    if (prefs) {
+      const parsed = typeof prefs === 'string' ? JSON.parse(prefs) : prefs;
+      if (parsed && parsed.min_rest_hours && Number(parsed.min_rest_hours) > 0) {
+        minRest = Number(parsed.min_rest_hours);
+      }
+
+      // If user disabled the min_rest rule explicitly, skip enforcement
+      if (parsed && parsed.min_rest_enabled === false) {
+        return;
+      }
+    }
+  } catch (e) {
+    // ignore parsing errors and fallback to default
+  }
+
+  // Normalize startAt to MySQL DATETIME format for reliable DB comparison
+  let dbStartAt = startAt;
+  try {
+    dbStartAt = new Date(startAt).toISOString().slice(0, 19).replace('T', ' ');
+  } catch (e) {
+    dbStartAt = startAt;
+  }
+
+  // Fetch recent services for the user and find the nearest previous one in JS
+  const recent = await repository.list({ userId });
+  const newStart = new Date(startAt);
+  let previous = null;
+
+  for (const s of recent) {
+    if (excludeServiceId && Number(s.id) === Number(excludeServiceId)) continue;
+    const sStart = new Date(s.start_at);
+    if (sStart < newStart) {
+      previous = s;
+      break;
+    }
+  }
+
+  if (!previous) return;
+
+  const prevStart = new Date(previous.start_at);
+  const prevEnd = new Date(prevStart.getTime() + Number(previous.duration_hours) * 60 * 60 * 1000);
+  const minAllowedStart = new Date(prevEnd.getTime() + Number(minRest) * 60 * 60 * 1000);
+
+  if (newStart < minAllowedStart) {
+    throw new AppError(
+      'MIN_REST_VIOLATION',
+      'é preciso intervalo de 8h entre serviços.',
+      400
+    );
+  }
+}
+
+async function assertMonthlyHoursLimit({ userId, startAt, durationHours, excludeServiceId }) {
+  // This rule can be disabled by user preference `monthly_limit_enabled: false`
+  const prefs = await repository.getUserPlanningPreferences(userId);
+  let limitHours = 120;
+
+  try {
+    if (prefs) {
+      const parsed = typeof prefs === 'string' ? JSON.parse(prefs) : prefs;
+      if (parsed && parsed.monthly_limit_enabled === false) {
+        return;
+      }
+      if (parsed && parsed.monthly_hours_limit && Number(parsed.monthly_hours_limit) > 0) {
+        limitHours = Number(parsed.monthly_hours_limit);
+      }
+    }
+  } catch (e) {
+    // ignore parsing errors and use default
+  }
+
+  // compute month range for startAt
+  const startDate = new Date(startAt);
+  const monthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const monthEnd = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1);
+
+  const planningRepo = require('../planning/planning.repository');
+  const monthly = await planningRepo.getMonthlyHours(userId, monthStart.toISOString().slice(0, 19).replace('T', ' '), monthEnd.toISOString().slice(0, 19).replace('T', ' '));
+
+  const confirmed = Number(monthly.confirmed_hours || 0);
+  const waiting = Number(monthly.waiting_hours || 0);
+
+  // For update, exclude current service's hours if provided
+  let currentServiceHours = 0;
+  if (excludeServiceId) {
+    const existing = await repository.findById(excludeServiceId);
+    if (existing) {
+      currentServiceHours = Number(existing.duration_hours || 0);
+    }
+  }
+
+  const totalAfter = confirmed + waiting - currentServiceHours + Number(durationHours || 0);
+  if (totalAfter > limitHours) {
+    throw new AppError('MONTHLY_HOURS_LIMIT_VIOLATION', `Limite mensal de ${limitHours}h excedido.`, 400);
   }
 }
 
@@ -160,6 +263,20 @@ async function create(authUser, payload) {
   assertCanCreateForUser(authUser, userId);
 
   rules.assertValidDuration(payload.duration_hours);
+  await assertMinRestInterval({
+    userId,
+    startAt: payload.start_at,
+    durationHours: payload.duration_hours,
+    excludeServiceId: null,
+  });
+
+  await assertMonthlyHoursLimit({
+    userId,
+    startAt: payload.start_at,
+    durationHours: payload.duration_hours,
+    excludeServiceId: null,
+  });
+
   await assertNoTimeConflict({
     userId,
     startAt: payload.start_at,
@@ -268,6 +385,20 @@ async function update(authUser, id, payload) {
   const nextDurationHours = payload.duration_hours ?? existing.duration_hours;
 
   rules.assertValidDuration(nextDurationHours);
+  await assertMinRestInterval({
+    userId: existing.user_id,
+    startAt: nextStartAt,
+    durationHours: nextDurationHours,
+    excludeServiceId: id,
+  });
+
+    await assertMonthlyHoursLimit({
+      userId: existing.user_id,
+      startAt: nextStartAt,
+      durationHours: nextDurationHours,
+      excludeServiceId: id,
+    });
+
   await assertNoTimeConflict({
     userId: existing.user_id,
     startAt: nextStartAt,

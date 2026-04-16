@@ -31,7 +31,7 @@ async function assertNoConflict({ userId, startAt, durationHours, force }) {
   if (overlaps.length > 0) {
     throw new AppError(
       'SCHEDULE_CONFLICT',
-      'Existe conflito de horario com outro servico/escala. Use force=true para confirmar.',
+      'é preciso intervalo de 8h entre serviços.',
       409
     );
   }

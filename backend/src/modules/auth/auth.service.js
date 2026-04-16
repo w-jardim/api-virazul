@@ -119,8 +119,38 @@ async function me(userId) {
   return user;
 }
 
+async function updateProfile(userId, payload) {
+  const existing = await authRepository.findSafeById(userId);
+
+  if (!existing) {
+    throw new AppError('AUTH_USER_NOT_FOUND', 'Usuario autenticado nao encontrado.', 404);
+  }
+
+  // Only allow updating planning preferences through this endpoint for now
+  const planningRepo = require('../planning/planning.repository');
+
+  let currentPrefs = null;
+  try {
+    const row = await planningRepo.getUserPreferences(userId);
+    currentPrefs = row ? row.planning_preferences : null;
+  } catch (e) {
+    currentPrefs = null;
+  }
+
+  const incoming = payload.planning_preferences || {};
+  const merged = Object.assign({}, typeof currentPrefs === 'string' ? JSON.parse(currentPrefs || '{}') : (currentPrefs || {}), incoming);
+
+  await planningRepo.updateUserPlanningPreferences(userId, merged);
+
+  // Return fresh user object
+  const user = await authRepository.findSafeById(userId);
+  return user;
+}
+
 module.exports = {
   login,
   loginWithGoogle,
   me,
+  updateProfile,
 };
+

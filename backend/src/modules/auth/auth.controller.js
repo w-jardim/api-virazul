@@ -38,19 +38,15 @@ const me = asyncHandler(async (req, res) => {
   });
 });
 
-async function updateProfile(req, res, next) {
-  try {
-    const payload = req.body;
-    // Prevent role escalation
-    delete payload.role;
-    const updated = await adminRepository.updateById(req.user.id, payload);
-    return res.json({ data: updated, meta: null, errors: null });
-  } catch (error) {
-    logger.warn('auth.update.failed', { user_id: req.user?.id });
-    return next(error);
-  }
-}
+const updateProfile = asyncHandler(async (req, res) => {
+  const user = await authService.updateProfile(req.user.id, req.body || {});
 
+  res.status(200).json({
+    data: user,
+    meta: null,
+    errors: null,
+  });
+});
 module.exports = {
   login,
   loginWithGoogle,

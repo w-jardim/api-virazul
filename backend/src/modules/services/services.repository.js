@@ -349,6 +349,44 @@ async function findOverlaps({ userId, startAt, endAt, excludeServiceId }) {
   return rows;
 }
 
+async function findPreviousService({ userId, startAt, excludeServiceId = null }) {
+  const where = [
+    's.user_id = ?',
+    's.deleted_at IS NULL',
+    's.start_at < ?',
+  ];
+  const params = [userId, startAt];
+
+  if (excludeServiceId) {
+    where.push('s.id <> ?');
+    params.push(excludeServiceId);
+  }
+
+  const sql = `
+    SELECT s.id, s.start_at, s.duration_hours, s.operational_status,
+           st.` + "`key`" + ` AS service_type_key, st.name AS service_type_name
+      FROM services s
+      JOIN service_types st ON st.id = s.service_type_id
+     WHERE ${where.join(' AND ')}
+     ORDER BY s.start_at DESC, s.id DESC
+     LIMIT 1`;
+
+  const [rows] = await pool.query(sql, params);
+  return rows[0] || null;
+}
+
+async function getUserPlanningPreferences(userId) {
+  const [rows] = await pool.query(
+    `SELECT planning_preferences
+       FROM user_preferences
+      WHERE user_id = ?
+      LIMIT 1`,
+    [userId]
+  );
+
+  return rows[0] ? rows[0].planning_preferences : null;
+}
+
 module.exports = {
   findServiceTypeById,
   getUserPreferenceRuleB,
@@ -366,4 +404,6 @@ module.exports = {
   syncPendingFinancialStatuses,
   syncOverdueFinancialStatuses,
   findOverlaps,
+  findPreviousService,
+  getUserPlanningPreferences,
 };

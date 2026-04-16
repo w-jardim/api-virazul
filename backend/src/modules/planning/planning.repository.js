@@ -46,8 +46,23 @@ async function getServicesInRange(userId, start, end) {
   return rows;
 }
 
+async function updateUserPlanningPreferences(userId, planningPreferences) {
+  const json = JSON.stringify(planningPreferences || null);
+
+  await pool.query(
+    `INSERT INTO user_preferences (user_id, planning_preferences)
+       VALUES (?, CAST(? AS JSON))
+      ON DUPLICATE KEY UPDATE planning_preferences = VALUES(planning_preferences)`,
+    [userId, json]
+  );
+
+  return getUserPreferences(userId);
+}
+
 module.exports = {
   getUserPreferences,
   getMonthlyHours,
   getServicesInRange,
+  updateUserPlanningPreferences,
 };
+
