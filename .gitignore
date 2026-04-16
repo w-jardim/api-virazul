@@ -1,0 +1,23 @@
+.DS_Store
+Thumbs.db
+
+# Dependencies
+backend/node_modules/
+
+# Logs
+backend/*.log
+backend/npm-debug.log*
+backend/yarn-debug.log*
+backend/yarn-error.log*
+backend/pnpm-debug.log*
+
+# Environment files
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Coverage and temp artifacts
+backend/coverage/
+backend/.nyc_output/
+backend/tmp/
+backend/temp/
