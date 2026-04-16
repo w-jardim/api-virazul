@@ -208,9 +208,19 @@ async function assertMonthlyHoursLimit({ userId, startAt, durationHours, exclude
     }
   }
 
-  const totalAfter = confirmed + waiting - currentServiceHours + Number(durationHours || 0);
+  const usedHours = confirmed + waiting - currentServiceHours;
+  const remainingHours = Math.max(limitHours - usedHours, 0);
+  const totalAfter = usedHours + Number(durationHours || 0);
+
   if (totalAfter > limitHours) {
-    throw new AppError('MONTHLY_HOURS_LIMIT_VIOLATION', `Limite mensal de ${limitHours}h excedido.`, 400);
+    const { DURATION_ALLOWED } = require('../services/services.rules');
+    const feasibleDurations = DURATION_ALLOWED.filter((d) => usedHours + d <= limitHours);
+    throw new AppError(
+      'MONTHLY_HOURS_LIMIT_VIOLATION',
+      `Limite mensal de ${limitHours}h excedido. Restam ${remainingHours}h disponíveis.`,
+      400,
+      { remaining_hours: remainingHours, feasible_durations: feasibleDurations, limit_hours: limitHours }
+    );
   }
 }
 

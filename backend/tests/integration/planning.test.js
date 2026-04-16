@@ -1,4 +1,4 @@
-const request = require('supertest');
+﻿const request = require('supertest');
 const jwt = require('jsonwebtoken');
 
 const mockState = {
@@ -57,6 +57,8 @@ describe('Planning Integration', () => {
       '24': 2,
     });
     expect(response.body.data.projection.combinations.length).toBeGreaterThan(0);
+    expect(response.body.data.projection.combinations.every((item) => item.total_hours <= 48)).toBe(true);
+    expect(response.body.data.projection.combinations[0].pending_hours).toBe(0);
   });
 
   test('bloqueio sem token', async () => {
@@ -118,6 +120,28 @@ describe('Planning Integration', () => {
       '24': 0,
     });
     expect(response.body.data.projection.combinations).toEqual([]);
+  });
+
+  test('combinações mostram pendência quando nenhuma duração cabe no restante', async () => {
+    mockState.preferencesByUser.set(36, {
+      monthly_hour_goal: 101,
+      planning_preferences: {},
+    });
+    mockState.monthlyByUser.set(36, { confirmed_hours: 96, waiting_hours: 0 });
+
+    const response = await request(app)
+      .get('/api/v1/planning/summary')
+      .set('Authorization', authHeader({ id: 36, role: 'POLICE', email: 'u36@local' }));
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.remaining_hours).toBe(5);
+    expect(response.body.data.projection.combinations).toEqual([
+      {
+        items: [],
+        total_hours: 0,
+        pending_hours: 5,
+      },
+    ]);
   });
 
   test('sugestoes respeitam preferencias configuradas', async () => {

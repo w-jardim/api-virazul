@@ -1,4 +1,4 @@
-const planningService = require('../../src/modules/planning/planning.service');
+﻿const planningService = require('../../src/modules/planning/planning.service');
 
 describe('Planning Service Unit', () => {
   test('calculo de horas', () => {
@@ -40,10 +40,22 @@ describe('Planning Service Unit', () => {
     expect(planningService.computeByDuration(18, [6, 8, 12, 24])['24']).toBe(1);
   });
 
-  test('gera combinacoes de horas', () => {
+  test('gera combinacoes sem ultrapassar a meta restante', () => {
     const combos = planningService.generateCombinationCandidates(48, [6, 8, 12, 24]);
     expect(combos.length).toBeGreaterThan(0);
-    expect(combos.some((item) => item.total_hours === 48)).toBe(true);
+    expect(combos.some((item) => item.total_hours === 48 && item.pending_hours === 0)).toBe(true);
+    expect(combos.every((item) => item.total_hours <= 48)).toBe(true);
+  });
+
+  test('gera pendencia quando nenhuma combinacao fecha exatamente o restante', () => {
+    const combos = planningService.generateCombinationCandidates(5, [6, 8, 12, 24]);
+    expect(combos).toEqual([
+      {
+        items: [],
+        total_hours: 0,
+        pending_hours: 5,
+      },
+    ]);
   });
 
   test('normaliza preferencias com dados invalidos', () => {

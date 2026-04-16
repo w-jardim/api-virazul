@@ -1,4 +1,4 @@
-const repository = require('./planning.repository');
+﻿const repository = require('./planning.repository');
 const { DURATION_ALLOWED } = require('../services/services.rules');
 const { getTimeZoneDayRange, getTimeZoneMonthRange, toDateKeyInTimeZone } = require('../alerts/alerts.time');
 
@@ -114,23 +114,29 @@ function buildItemsFromCounts(countsByDuration) {
     .sort((a, b) => b.duration - a.duration);
 }
 
+function buildCombinationResult(remainingHours, counts) {
+  const items = buildItemsFromCounts(counts);
+  const totalHours = items.reduce((sum, item) => sum + item.duration * item.count, 0);
+
+  return {
+    items,
+    total_hours: totalHours,
+    pending_hours: Math.max(remainingHours - totalHours, 0),
+  };
+}
+
 function generateCombinationCandidates(remainingHours, durations) {
   if (remainingHours <= 0 || durations.length === 0) {
     return [];
   }
 
   const sorted = [...durations].sort((a, b) => b - a);
-  const upperBound = remainingHours + Math.max(...sorted);
   const seen = new Set();
   const output = [];
 
   function walk(index, currentTotal, counts) {
-    if (output.length >= 30) {
-      return;
-    }
-
     if (index === sorted.length) {
-      if (currentTotal < remainingHours || currentTotal > upperBound) {
+      if (currentTotal <= 0 || currentTotal > remainingHours) {
         return;
       }
 
@@ -140,20 +146,17 @@ function generateCombinationCandidates(remainingHours, durations) {
       }
 
       seen.add(key);
-      output.push({
-        items: buildItemsFromCounts(counts),
-        total_hours: currentTotal,
-      });
+      output.push(buildCombinationResult(remainingHours, counts));
       return;
     }
 
     const duration = sorted[index];
-    const maxCount = Math.max(0, Math.ceil(upperBound / duration));
+    const maxCount = Math.floor((remainingHours - currentTotal) / duration);
 
-    for (let count = 0; count <= maxCount; count += 1) {
+    for (let count = maxCount; count >= 0; count -= 1) {
       const nextTotal = currentTotal + duration * count;
-      if (nextTotal > upperBound) {
-        break;
+      if (nextTotal > remainingHours) {
+        continue;
       }
 
       walk(index + 1, nextTotal, { ...counts, [duration]: count });
@@ -162,20 +165,26 @@ function generateCombinationCandidates(remainingHours, durations) {
 
   walk(0, 0, {});
 
+  if (output.length === 0) {
+    return [{ items: [], total_hours: 0, pending_hours: remainingHours }];
+  }
+
   output.sort((a, b) => {
-    const aExact = a.total_hours === remainingHours ? 0 : 1;
-    const bExact = b.total_hours === remainingHours ? 0 : 1;
+    const aExact = a.pending_hours === 0 ? 0 : 1;
+    const bExact = b.pending_hours === 0 ? 0 : 1;
     if (aExact !== bExact) {
       return aExact - bExact;
     }
 
-    const aDiff = Math.abs(a.total_hours - remainingHours);
-    const bDiff = Math.abs(b.total_hours - remainingHours);
-    if (aDiff !== bDiff) {
-      return aDiff - bDiff;
+    if (a.pending_hours !== b.pending_hours) {
+      return a.pending_hours - b.pending_hours;
     }
 
-    return a.items.length - b.items.length;
+    if (a.items.length !== b.items.length) {
+      return a.items.length - b.items.length;
+    }
+
+    return b.total_hours - a.total_hours;
   });
 
   return output.slice(0, 8);
@@ -255,11 +264,19 @@ async function getSummary(userId, now = new Date()) {
   const effectiveDurations = getEffectiveDurations(planningPreferences);
   const hours = computeHours(monthlyHours, goal);
 
+  // cap_gap_hours: hours that could not be scheduled because no available duration fits within the cap
+  const { DURATION_ALLOWED } = require('../services/services.rules');
+  const smallestAllowed = Math.min(...DURATION_ALLOWED);
+  const capGapHours = hours.remaining_hours > 0 && hours.remaining_hours < smallestAllowed
+    ? hours.remaining_hours
+    : 0;
+
   return {
     goal,
     confirmed_hours: hours.confirmed_hours,
     waiting_hours: hours.waiting_hours,
     remaining_hours: hours.remaining_hours,
+    cap_gap_hours: capGapHours,
     projection: {
       by_duration: computeByDuration(hours.remaining_hours, effectiveDurations),
       combinations: generateCombinationCandidates(hours.remaining_hours, effectiveDurations),
