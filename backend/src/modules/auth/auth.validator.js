@@ -47,6 +47,7 @@ const updateProfileSchema = Joi.object({
   password: Joi.string().min(6).optional(),
   password_confirm: Joi.any().valid(Joi.ref('password')).when('password', { is: Joi.exist(), then: Joi.required() }).messages({ 'any.only': 'Confirmação de senha não corresponde.' }),
   rank_group: Joi.string().optional().allow(null, ''),
+  planning_preferences: Joi.object().unknown(true).optional().allow(null),
 }).unknown(false);
 
 const registerSchema = Joi.object({
