@@ -126,6 +126,35 @@ async function create(authUser, payload) {
   };
 }
 
+// ── template CRUD + calendar ──────────────────────────────────────────────────
+
+const { computeWorkDays } = require('./schedules.template');
+
+async function getTemplate(userId) {
+  const template = await repository.getScheduleTemplate(userId);
+  return { template: template || null };
+}
+
+async function saveTemplate(userId, templatePayload) {
+  const saved = await repository.saveScheduleTemplate(userId, templatePayload);
+  return { template: saved };
+}
+
+async function deleteTemplate(userId) {
+  await repository.deleteScheduleTemplate(userId);
+  return { template: null };
+}
+
+async function getCalendar(userId, month) {
+  const template = await repository.getScheduleTemplate(userId);
+  const work_days = computeWorkDays(template, month);
+  return { month, template: template || null, work_days };
+}
+
 module.exports = {
   create,
+  getTemplate,
+  saveTemplate,
+  deleteTemplate,
+  getCalendar,
 };

@@ -106,10 +106,56 @@ async function findByIds(ids) {
   return rows;
 }
 
+// ── schedule template ─────────────────────────────────────────────────────────
+
+async function getScheduleTemplate(userId) {
+  const [rows] = await pool.query(
+    `SELECT schedule_template
+       FROM user_preferences
+      WHERE user_id = ?
+      LIMIT 1`,
+    [userId]
+  );
+
+  if (!rows[0]) return null;
+
+  const raw = rows[0].schedule_template;
+  if (!raw) return null;
+
+  try {
+    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch {
+    return null;
+  }
+}
+
+async function saveScheduleTemplate(userId, template) {
+  await pool.query(
+    `INSERT INTO user_preferences (user_id, schedule_template)
+          VALUES (?, CAST(? AS JSON))
+     ON DUPLICATE KEY UPDATE schedule_template = CAST(VALUES(schedule_template) AS JSON)`,
+    [userId, JSON.stringify(template)]
+  );
+
+  return getScheduleTemplate(userId);
+}
+
+async function deleteScheduleTemplate(userId) {
+  await pool.query(
+    `UPDATE user_preferences
+        SET schedule_template = NULL
+      WHERE user_id = ?`,
+    [userId]
+  );
+}
+
 module.exports = {
   findOrdinaryServiceType,
   findOverlaps,
   getConnection,
   createService,
   findByIds,
+  getScheduleTemplate,
+  saveScheduleTemplate,
+  deleteScheduleTemplate,
 };

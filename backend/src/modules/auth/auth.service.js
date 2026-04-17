@@ -116,6 +116,21 @@ async function me(userId) {
     throw new AppError('AUTH_USER_NOT_FOUND', 'Usuario autenticado nao encontrado.', 404);
   }
 
+  // Attach user preferences (planning + schedule template)
+  try {
+    const planningRepo = require('../planning/planning.repository');
+    const schedulesRepo = require('../schedules/schedules.repository');
+    const [prefs, template] = await Promise.all([
+      planningRepo.getUserPreferences(userId),
+      schedulesRepo.getScheduleTemplate(userId),
+    ]);
+    user.monthly_hour_goal = prefs?.monthly_hour_goal ?? null;
+    user.planning_preferences = prefs?.planning_preferences ?? null;
+    user.schedule_template = template ?? null;
+  } catch {
+    // preferences are non-critical — return user without them if DB fails
+  }
+
   return user;
 }
 
