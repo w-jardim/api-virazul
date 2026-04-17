@@ -59,6 +59,18 @@ async function updateUserPlanningPreferences(userId, planningPreferences) {
   return getUserPreferences(userId);
 }
 
+async function updateUserMonthlyHourGoal(userId, monthlyHourGoal) {
+  // Ensure a row exists and set monthly_hour_goal
+  await pool.query(
+    `INSERT INTO user_preferences (user_id, monthly_hour_goal)
+       VALUES (?, ?)
+      ON DUPLICATE KEY UPDATE monthly_hour_goal = VALUES(monthly_hour_goal)`,
+    [userId, monthlyHourGoal]
+  );
+
+  return getUserPreferences(userId);
+}
+
 module.exports = {
   getUserPreferences,
   getMonthlyHours,

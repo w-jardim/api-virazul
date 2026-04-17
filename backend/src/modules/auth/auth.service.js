@@ -142,6 +142,14 @@ async function updateProfile(userId, payload) {
 
   await planningRepo.updateUserPlanningPreferences(userId, merged);
 
+  // Allow updating monthly hour goal if provided
+  if (payload.monthly_hour_goal !== undefined) {
+    const goal = Number(payload.monthly_hour_goal);
+    if (Number.isFinite(goal) && goal >= 0) {
+      await planningRepo.updateUserMonthlyHourGoal(userId, goal);
+    }
+  }
+
   // Return fresh user object
   const user = await authRepository.findSafeById(userId);
   return user;
