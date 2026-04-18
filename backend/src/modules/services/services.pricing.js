@@ -85,11 +85,12 @@ async function buildFinancialPreview({
 }) {
   const serviceScope = resolveServiceScope(serviceType);
 
-  // Always resolve rank_group from DB when userId is available so that
-  // profile rank changes take effect immediately without requiring a
-  // frontend session refresh.
-  let resolvedRankGroup = rankGroup;
-  if (userId) {
+  // Respect explicit rank_group from payload/form. Only fallback to the user's
+  // current DB rank when no rank_group was provided.
+  const hasExplicitRankGroup = typeof rankGroup === 'string' && rankGroup.trim().length > 0;
+  let resolvedRankGroup = hasExplicitRankGroup ? rankGroup : DEFAULT_RANK_GROUP;
+
+  if (!hasExplicitRankGroup && userId) {
     const userRank = await pricingRepository.findUserRankGroup(userId);
     if (userRank) {
       resolvedRankGroup = userRank;
