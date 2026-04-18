@@ -107,7 +107,7 @@ async function createGoogleUser({ name, email, googleSub }) {
       payment_due_date,
       rank_group,
       google_sub
-    ) VALUES (?, ?, ?, 'POLICE', 'active', 'free', 'pending', NULL, NULL, ?)`,
+    ) VALUES (?, ?, ?, 'POLICE', 'active', 'trial', 'pending', NULL, NULL, ?)`,
     [name, email, passwordHash, googleSub]
   );
 
