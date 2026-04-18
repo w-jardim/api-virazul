@@ -141,7 +141,21 @@ async function updateProfile(userId, payload) {
     throw new AppError('AUTH_USER_NOT_FOUND', 'Usuario autenticado nao encontrado.', 404);
   }
 
-  // Only allow updating planning preferences through this endpoint for now
+  // Update users table fields (name, rank_group, password)
+  const userFields = {};
+  if (payload.name && String(payload.name).trim()) {
+    userFields.name = String(payload.name).trim();
+  }
+  if (payload.rank_group !== undefined) {
+    userFields.rank_group = payload.rank_group || null;
+  }
+  if (payload.password) {
+    userFields.password_hash = await passwordUtils.hashPassword(payload.password);
+  }
+  if (Object.keys(userFields).length > 0) {
+    await authRepository.updateUser(userId, userFields);
+  }
+
   const planningRepo = require('../planning/planning.repository');
 
   let currentPrefs = null;
