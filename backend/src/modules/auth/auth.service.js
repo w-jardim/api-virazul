@@ -169,13 +169,21 @@ async function updateProfile(userId, payload) {
   const incoming = payload.planning_preferences || {};
   const merged = Object.assign({}, typeof currentPrefs === 'string' ? JSON.parse(currentPrefs || '{}') : (currentPrefs || {}), incoming);
 
-  await planningRepo.updateUserPlanningPreferences(userId, merged);
+  try {
+    await planningRepo.updateUserPlanningPreferences(userId, merged);
+  } catch (e) {
+    // non-critical — user/rank update already succeeded
+  }
 
   // Allow updating monthly hour goal if provided
   if (payload.monthly_hour_goal !== undefined) {
     const goal = Number(payload.monthly_hour_goal);
     if (Number.isFinite(goal) && goal >= 0) {
-      await planningRepo.updateUserMonthlyHourGoal(userId, goal);
+      try {
+        await planningRepo.updateUserMonthlyHourGoal(userId, goal);
+      } catch (e) {
+        // non-critical
+      }
     }
   }
 
