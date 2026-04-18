@@ -242,6 +242,7 @@ async function buildAmountsAndSnapshot(serviceType, payload, existing = null, us
     serviceType,
     durationHours: payload.duration_hours,
     manualAmounts: payload,
+    rankGroup: payload.rank_group || undefined,
     userId,
     referenceDate: payload.start_at,
   });

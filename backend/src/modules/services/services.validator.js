@@ -7,6 +7,8 @@ const {
   DURATION_ALLOWED,
 } = require('./services.rules');
 
+const VALID_RANK_GROUPS = ['OFICIAIS_SUPERIORES', 'CAPITAO_TENENTE', 'SUBTENENTE_SARGENTO', 'CABO_SOLDADO'];
+
 const createSchema = Joi.object({
   user_id: Joi.number().integer().positive().optional(),
   service_type_id: Joi.number().integer().positive().required(),
@@ -17,6 +19,7 @@ const createSchema = Joi.object({
   reservation_expires_at: Joi.date().iso().allow(null),
   notes: Joi.string().allow('', null),
   financial_status: Joi.string().valid(...FINANCIAL_STATUSES).default('PREVISTO'),
+  rank_group: Joi.string().valid(...VALID_RANK_GROUPS).optional(),
   amount_base: Joi.number().min(0).default(0),
   amount_paid: Joi.number().min(0).default(0),
   amount_meal: Joi.number().min(0).default(0),
@@ -33,6 +36,7 @@ const updateSchema = Joi.object({
   force: Joi.boolean().default(false),
   reservation_expires_at: Joi.date().iso().allow(null),
   notes: Joi.string().allow('', null),
+  rank_group: Joi.string().valid(...VALID_RANK_GROUPS).optional(),
   amount_base: Joi.number().min(0).optional(),
   amount_paid: Joi.number().min(0).optional(),
   amount_meal: Joi.number().min(0).optional(),
