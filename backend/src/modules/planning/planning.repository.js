@@ -76,5 +76,6 @@ module.exports = {
   getMonthlyHours,
   getServicesInRange,
   updateUserPlanningPreferences,
+  updateUserMonthlyHourGoal,
 };
 
