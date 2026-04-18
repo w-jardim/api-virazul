@@ -70,7 +70,7 @@ async function register(req, res, next) {
       password,
       role: 'POLICE',
       status: 'active',
-      subscription: 'free'
+      subscription: 'trial'
     });
 
     const token = jwtUtils.sign({ id: created.id, email: created.email, role: created.role });
@@ -84,7 +84,7 @@ async function register(req, res, next) {
           email: created.email,
           role: created.role,
           rank_group: created.rank_group || null,
-          subscription: created.subscription || 'free',
+          subscription: created.subscription || 'trial',
           payment_due_date: created.payment_due_date || null,
           created_at: created.created_at,
         }
