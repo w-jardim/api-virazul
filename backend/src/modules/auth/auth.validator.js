@@ -42,7 +42,6 @@ function validateGoogleLogin(req, res, next) {
 
 const updateProfileSchema = Joi.object({
   name: Joi.string().min(1).optional(),
-  email: Joi.string().email({ tlds: { allow: false } }).optional(),
   monthly_hour_goal: Joi.number().integer().min(0).optional(),
   password: Joi.string().min(6).optional(),
   password_confirm: Joi.any().valid(Joi.ref('password')).when('password', { is: Joi.exist(), then: Joi.required() }).messages({ 'any.only': 'Confirmação de senha não corresponde.' }),
