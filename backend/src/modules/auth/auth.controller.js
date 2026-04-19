@@ -1,4 +1,4 @@
-﻿const asyncHandler = require('../../utils/async-handler');
+const asyncHandler = require('../../utils/async-handler');
 const AppError = require('../../utils/app-error');
 const authService = require('./auth.service');
 const adminRepository = require('../admin/admin.repository');
@@ -57,7 +57,7 @@ module.exports = {
 
 async function register(req, res, next) {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, rank_group } = req.body;
 
     const existing = await authRepository.findByEmail(email);
     if (existing) {
@@ -68,6 +68,7 @@ async function register(req, res, next) {
       name,
       email,
       password,
+      rank_group: rank_group || null,
       role: 'POLICE',
       status: 'active',
       subscription: 'trial'
