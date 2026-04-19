@@ -92,16 +92,27 @@ async function cancelSubscription(id) {
 }
 
 async function syncLegacyUserFields(userId, fields) {
-  const allowed = ['subscription', 'payment_status', 'payment_due_date'];
+  const mapping = {
+    subscription: 'subscription',
+    payment_status: 'payment_status',
+    payment_due_date: 'payment_due_date',
+    paymentStatus: 'payment_status',
+    paymentDueDate: 'payment_due_date',
+  };
+
   const updates = [];
   const values = [];
-  for (const key of allowed) {
-    if (fields[key] !== undefined) {
-      updates.push(`${key} = ?`);
+
+  for (const key in fields) {
+    const dbKey = mapping[key];
+    if (dbKey) {
+      updates.push(`${dbKey} = ?`);
       values.push(fields[key]);
     }
   }
+
   if (updates.length === 0) return;
+
   values.push(userId);
   await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
 }
