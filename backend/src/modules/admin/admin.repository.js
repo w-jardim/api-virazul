@@ -43,7 +43,7 @@ async function create(user) {
   let paymentDueDate = user.payment_due_date || null;
 
   if (user.subscription === 'free' || user.role === 'ADMIN_MASTER') {
-    paymentStatus = null;
+    paymentStatus = 'pending';
     paymentDueDate = null;
   }
 
@@ -96,10 +96,9 @@ async function updateById(id, payload) {
     values.push(payload.subscription);
   }
 
-  if (payload.subscription === 'free') {
-    fields.push('payment_status = NULL');
-    fields.push('payment_due_date = NULL');
-  } else {
+  // payment fields: only update when subscription is NOT free
+  // normalizeBilling already hides payment fields for free users in responses
+  if (payload.subscription !== 'free') {
     if (payload.payment_status !== undefined) {
       fields.push('payment_status = ?');
       values.push(payload.payment_status);
@@ -137,8 +136,10 @@ async function deleteById(id) {
 
 async function updateSubscription(id, subscription) {
   if (subscription === 'free') {
+    // Only update subscription column - normalizeBilling hides payment fields in responses
+    // Avoid setting payment_status = NULL as the column may have NOT NULL constraint
     await pool.query(
-      'UPDATE users SET subscription = ?, payment_status = NULL, payment_due_date = NULL WHERE id = ? AND deleted_at IS NULL',
+      'UPDATE users SET subscription = ? WHERE id = ? AND deleted_at IS NULL',
       [subscription, id]
     );
   } else {
