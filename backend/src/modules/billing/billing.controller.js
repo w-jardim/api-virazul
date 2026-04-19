@@ -8,7 +8,7 @@ const getSubscription = asyncHandler(async (req, res) => {
   res.status(200).json({ data, meta: null, errors: null });
 });
 
-const createCheckoutPremium = asyncHandler(async (req, res) => {
+const createCheckoutPremium = asyncHandler(async (req, res, next) => {
   const { error } = validateCheckout(req.body);
   if (error) {
     return next(new AppError('VALIDATION_ERROR', error.message, 400));
@@ -17,7 +17,7 @@ const createCheckoutPremium = asyncHandler(async (req, res) => {
   res.status(200).json({ data: result, meta: null, errors: null });
 });
 
-const createPixCharge = asyncHandler(async (req, res) => {
+const createPixCharge = asyncHandler(async (req, res, next) => {
   const { error } = validatePix(req.body);
   if (error) {
     return next(new AppError('VALIDATION_ERROR', error.message, 400));
