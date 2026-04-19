@@ -1,5 +1,12 @@
-﻿const Joi = require('joi');
+const Joi = require('joi');
 const AppError = require('../../utils/app-error');
+
+const RANK_GROUP_VALUES = [
+  'OFICIAIS_SUPERIORES',
+  'CAPITAO_TENENTE',
+  'SUBTENENTE_SARGENTO',
+  'CABO_SOLDADO'
+];
 
 const loginSchema = Joi.object({
   email: Joi.string().email({ tlds: { allow: false } }).required(),
@@ -45,7 +52,7 @@ const updateProfileSchema = Joi.object({
   monthly_hour_goal: Joi.number().integer().min(0).optional(),
   password: Joi.string().min(6).optional(),
   password_confirm: Joi.any().valid(Joi.ref('password')).when('password', { is: Joi.exist(), then: Joi.required() }).messages({ 'any.only': 'Confirmação de senha não corresponde.' }),
-  rank_group: Joi.string().optional().allow(null, ''),
+  rank_group: Joi.string().valid(...RANK_GROUP_VALUES).optional().allow(null),
   planning_preferences: Joi.object().unknown(true).optional().allow(null),
 }).unknown(false);
 
@@ -54,6 +61,7 @@ const registerSchema = Joi.object({
   email: Joi.string().email({ tlds: { allow: false } }).required(),
   password: Joi.string().min(6).required(),
   password_confirm: Joi.any().valid(Joi.ref('password')).required().messages({ 'any.only': 'Confirmação de senha não corresponde.' }),
+  rank_group: Joi.string().valid(...RANK_GROUP_VALUES).optional().allow(null)
 }).unknown(false);
 
 function validateUpdateProfile(req, res, next) {
@@ -67,7 +75,6 @@ function validateUpdateProfile(req, res, next) {
     return next(new AppError('VALIDATION_ERROR', message, 400));
   }
 
-  // remove password_confirm from payload
   if (value.password_confirm !== undefined) delete value.password_confirm;
 
   req.body = value;
@@ -85,8 +92,12 @@ function validateRegister(req, res, next) {
     return next(new AppError('VALIDATION_ERROR', message, 400));
   }
 
-  // remove password_confirm from payload
   if (value.password_confirm !== undefined) delete value.password_confirm;
+
+  // normalize email
+  if (value.email) {
+    value.email = value.email.trim().toLowerCase();
+  }
 
   req.body = value;
   return next();
