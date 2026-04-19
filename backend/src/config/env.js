@@ -89,11 +89,26 @@ const config = {
       'cancelled',
       'canceled',
       'inactive',
+      'expired',
+      'past_due',
     ]).map((item) => item.toLowerCase()),
   },
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID || '',
     enabled: Boolean(process.env.GOOGLE_CLIENT_ID),
+  },
+  mercadoPago: {
+    accessToken: process.env.MP_ACCESS_TOKEN || '',
+    publicKey: process.env.MP_PUBLIC_KEY || '',
+    webhookSecret: process.env.MP_WEBHOOK_SECRET || '',
+    environment: process.env.MP_ENVIRONMENT || 'sandbox',
+    webhookUrl: process.env.MP_WEBHOOK_URL || '',
+    backUrl: process.env.MP_BACK_URL || '',
+    enabled: Boolean(process.env.MP_ACCESS_TOKEN),
+  },
+  billing: {
+    trialDays: toNumber(process.env.TRIAL_DAYS, 30),
+    premiumPriceCents: toNumber(process.env.PREMIUM_PRICE_CENTS, 999),
   },
 };
 
