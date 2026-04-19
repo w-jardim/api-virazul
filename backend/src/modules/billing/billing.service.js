@@ -235,17 +235,48 @@ async function cancelUserSubscription(userId) {
   if (!sub) {
     throw new AppError('BILLING_NO_SUBSCRIPTION', 'Nenhuma assinatura encontrada.', 404);
   }
+
+  if (sub.plan === 'free') {
+    throw new AppError(
+      'BILLING_FREE_ADMIN_ONLY',
+      'O plano Free é uma cortesia administrativa e só pode ser alterado por um administrador.',
+      400
+    );
+  }
+
+  if (sub.plan === 'trial' && sub.status === 'trialing') {
+    throw new AppError(
+      'BILLING_TRIAL_NOT_CANCELABLE',
+      'O período de teste permanece ativo até o vencimento e não pode ser cancelado por autoatendimento.',
+      400
+    );
+  }
+
   if (['canceled', 'expired'].includes(sub.status)) {
     throw new AppError('BILLING_ALREADY_CANCELED', 'Assinatura ja esta cancelada ou expirada.', 400);
   }
 
+  if (sub.plan !== 'premium') {
+    throw new AppError(
+      'BILLING_PLAN_NOT_CANCELABLE',
+      'Somente assinaturas Premium podem ser canceladas por autoatendimento.',
+      400
+    );
+  }
+
   await subscriptionsRepo.cancelSubscription(sub.id);
   await subscriptionsRepo.syncLegacyUserFields(userId, {
-    subscription: 'free',
+    subscription: 'premium',
     paymentStatus: 'cancelled',
+    paymentDueDate: null,
   });
 
-  logger.info('billing.subscription.canceled', { user_id: userId, sub_id: sub.id });
+  logger.info('billing.subscription.canceled', {
+    user_id: userId,
+    sub_id: sub.id,
+    legacy_subscription: 'premium',
+  });
+
   return { canceled: true };
 }
 
