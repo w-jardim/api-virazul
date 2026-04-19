@@ -94,20 +94,22 @@ async function updateById(id, payload) {
   if (payload.subscription !== undefined) {
     fields.push('subscription = ?');
     values.push(payload.subscription);
+  }
 
-    if (payload.subscription === 'free') {
-      fields.push('payment_status = NULL');
-      fields.push('payment_due_date = NULL');
+  if (payload.subscription === 'free') {
+    fields.push('payment_status = NULL');
+    fields.push('payment_due_date = NULL');
+  } else {
+    if (payload.payment_status !== undefined) {
+      fields.push('payment_status = ?');
+      values.push(payload.payment_status);
+    }
+    if (payload.payment_due_date !== undefined) {
+      fields.push('payment_due_date = ?');
+      values.push(payload.payment_due_date || null);
     }
   }
-  if (payload.payment_status !== undefined) {
-    fields.push('payment_status = ?');
-    values.push(payload.payment_status);
-  }
-  if (payload.payment_due_date !== undefined) {
-    fields.push('payment_due_date = ?');
-    values.push(payload.payment_due_date || null);
-  }
+
   if (payload.rank_group !== undefined) {
     fields.push('rank_group = ?');
     values.push(payload.rank_group || null);
