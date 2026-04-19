@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS payments (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  subscription_id BIGINT UNSIGNED NULL,
+  gateway VARCHAR(50) NOT NULL DEFAULT 'mercadopago',
+  gateway_payment_id VARCHAR(255) NULL,
+  external_reference VARCHAR(255) NULL,
+  payment_method VARCHAR(100) NULL,
+  amount_cents INT UNSIGNED NOT NULL DEFAULT 0,
+  currency VARCHAR(10) NOT NULL DEFAULT 'BRL',
+  status ENUM('pending','approved','rejected','cancelled','refunded','in_process') NOT NULL DEFAULT 'pending',
+  due_at TIMESTAMP NULL DEFAULT NULL,
+  paid_at TIMESTAMP NULL DEFAULT NULL,
+  raw_payload_json JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_payments_gateway_id (gateway, gateway_payment_id),
+  CONSTRAINT fk_payments_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_payments_subscription FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

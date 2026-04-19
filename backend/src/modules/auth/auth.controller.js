@@ -47,6 +47,7 @@ const updateProfile = asyncHandler(async (req, res) => {
     errors: null,
   });
 });
+
 module.exports = {
   login,
   loginWithGoogle,
@@ -71,7 +72,13 @@ async function register(req, res, next) {
       rank_group: rank_group || null,
       role: 'POLICE',
       status: 'active',
-      subscription: 'trial'
+      subscription: 'trial',
+    });
+
+    // Start real trial subscription (non-blocking — user response is not delayed)
+    const billingService = require('../billing/billing.service');
+    billingService.startTrial(created.id).catch((err) => {
+      logger.error('billing.trial.register.failed', { user_id: created.id, error: err.message });
     });
 
     const token = jwtUtils.sign({ id: created.id, email: created.email, role: created.role });
@@ -88,7 +95,7 @@ async function register(req, res, next) {
           subscription: created.subscription || 'trial',
           payment_due_date: created.payment_due_date || null,
           created_at: created.created_at,
-        }
+        },
       },
       meta: null,
       errors: null,

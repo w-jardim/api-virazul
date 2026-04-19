@@ -71,6 +71,7 @@ async function loginWithGoogle(idToken) {
   }
 
   let user = await authRepository.findByGoogleSub(googleSub);
+  let isNewUser = false;
 
   if (!user) {
     const userByEmail = await authRepository.findByEmail(email);
@@ -95,6 +96,7 @@ async function loginWithGoogle(idToken) {
         email,
         googleSub,
       });
+      isNewUser = true;
     }
   }
 
@@ -104,6 +106,13 @@ async function loginWithGoogle(idToken) {
 
   await authRepository.updateLastLogin(user.id);
   logger.info('auth.google.login.success', { user_id: user.id, email });
+
+  if (isNewUser) {
+    const billingService = require('../billing/billing.service');
+    billingService.startTrial(user.id).catch((err) => {
+      logger.warn('billing.trial.google.failed', { user_id: user.id, error: err.message });
+    });
+  }
 
   return buildSession(user);
 }
@@ -128,7 +137,7 @@ async function me(userId) {
     user.planning_preferences = prefs?.planning_preferences ?? null;
     user.schedule_template = template ?? null;
   } catch {
-    // preferences are non-critical — return user without them if DB fails
+    // preferences are non-critical
   }
 
   return user;
@@ -141,7 +150,6 @@ async function updateProfile(userId, payload) {
     throw new AppError('AUTH_USER_NOT_FOUND', 'Usuario autenticado nao encontrado.', 404);
   }
 
-  // Update users table fields (name, rank_group, password)
   const userFields = {};
   if (payload.name && String(payload.name).trim()) {
     userFields.name = String(payload.name).trim();
@@ -167,15 +175,18 @@ async function updateProfile(userId, payload) {
   }
 
   const incoming = payload.planning_preferences || {};
-  const merged = Object.assign({}, typeof currentPrefs === 'string' ? JSON.parse(currentPrefs || '{}') : (currentPrefs || {}), incoming);
+  const merged = Object.assign(
+    {},
+    typeof currentPrefs === 'string' ? JSON.parse(currentPrefs || '{}') : currentPrefs || {},
+    incoming
+  );
 
   try {
     await planningRepo.updateUserPlanningPreferences(userId, merged);
   } catch (e) {
-    // non-critical — user/rank update already succeeded
+    // non-critical
   }
 
-  // Allow updating monthly hour goal if provided
   if (payload.monthly_hour_goal !== undefined) {
     const goal = Number(payload.monthly_hour_goal);
     if (Number.isFinite(goal) && goal >= 0) {
@@ -187,7 +198,6 @@ async function updateProfile(userId, payload) {
     }
   }
 
-  // Return fresh user object
   const user = await authRepository.findSafeById(userId);
   return user;
 }
@@ -198,4 +208,3 @@ module.exports = {
   me,
   updateProfile,
 };
-

@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS webhook_events (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  gateway VARCHAR(50) NOT NULL DEFAULT 'mercadopago',
+  event_id VARCHAR(255) NOT NULL,
+  event_type VARCHAR(100) NOT NULL,
+  payload_json JSON NOT NULL,
+  processed TINYINT(1) NOT NULL DEFAULT 0,
+  processed_at TIMESTAMP NULL DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_webhook_events (gateway, event_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

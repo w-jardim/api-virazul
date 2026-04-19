@@ -11,6 +11,7 @@ const financeRoutes = require('../modules/finance/finance.routes');
 const reportsRoutes = require('../modules/reports/reports.routes');
 const pricingRoutes = require('../modules/pricing/pricing.routes');
 const adminRoutes = require('../modules/admin/admin.routes');
+const billingRoutes = require('../modules/billing/billing.routes');
 const db = require('../config/db');
 const env = require('../config/env');
 
@@ -64,6 +65,7 @@ router.get('/ready', async (req, res) => {
 });
 
 router.use('/auth', authRoutes);
+router.use('/billing', billingRoutes);
 router.use('/service-types', serviceTypesRoutes);
 router.use('/services', servicesRoutes);
 router.use('/alerts', alertsRoutes);
