@@ -1,5 +1,4 @@
 const financeService = require('../../src/modules/finance/finance.service');
-const { toDateKeyInTimeZone } = require('../../src/modules/alerts/alerts.time');
 
 function makeBaseService(overrides = {}) {
   return {
@@ -7,7 +6,7 @@ function makeBaseService(overrides = {}) {
     start_at: '2026-05-10T10:00:00.000Z',
     duration_hours: 12,
     operational_status: 'REALIZADO',
-    financial_status: 'PAGO',
+    financial_status: 'RECEBIDO',
     amount_total: 200,
     amount_paid: 200,
     amount_balance: 0,
@@ -23,8 +22,8 @@ describe('Finance Service Unit', () => {
   test('calculo de total_received', () => {
     const summary = financeService.calculateSummaryFromServices(
       [
-        makeBaseService({ financial_status: 'PAGO', amount_total: 300, amount_paid: 300, amount_balance: 0 }),
-        makeBaseService({ id: 2, financial_status: 'NAO_PAGO', amount_total: 100, amount_paid: 0, amount_balance: 100 }),
+        makeBaseService({ financial_status: 'RECEBIDO', amount_total: 300, amount_paid: 300, amount_balance: 0 }),
+        makeBaseService({ id: 2, financial_status: 'PENDENTE', amount_total: 100, amount_paid: 0, amount_balance: 100 }),
       ],
       new Date('2026-05-30T12:00:00.000Z')
     );
@@ -32,11 +31,11 @@ describe('Finance Service Unit', () => {
     expect(summary.total_received).toBe(300);
   });
 
-  test('PAGO inconsistente nao contamina total_received', () => {
+  test('RECEBIDO inconsistente nao contamina total_received', () => {
     const summary = financeService.calculateSummaryFromServices(
       [
         makeBaseService({
-          financial_status: 'PAGO',
+          financial_status: 'RECEBIDO',
           amount_total: 300,
           amount_paid: 100,
           amount_balance: 200,
@@ -51,8 +50,8 @@ describe('Finance Service Unit', () => {
   test('calculo de total_pending', () => {
     const summary = financeService.calculateSummaryFromServices(
       [
-        makeBaseService({ financial_status: 'NAO_PAGO', amount_total: 120, amount_paid: 0, amount_balance: 120 }),
-        makeBaseService({ id: 2, financial_status: 'PAGO_PARCIAL', amount_total: 200, amount_paid: 120, amount_balance: 80 }),
+        makeBaseService({ financial_status: 'PENDENTE', amount_total: 120, amount_paid: 0, amount_balance: 120 }),
+        makeBaseService({ id: 2, financial_status: 'PENDENTE', amount_total: 80, amount_paid: 0, amount_balance: 80 }),
       ],
       new Date('2026-05-30T12:00:00.000Z')
     );
@@ -60,11 +59,11 @@ describe('Finance Service Unit', () => {
     expect(summary.total_pending).toBe(200);
   });
 
-  test('calculo de overdue', () => {
+  test('calculo de overdue permanece zero sem regra de atraso', () => {
     const summary = financeService.calculateSummaryFromServices(
       [
         makeBaseService({
-          financial_status: 'NAO_PAGO',
+          financial_status: 'PENDENTE',
           amount_total: 150,
           amount_paid: 0,
           amount_balance: 150,
@@ -72,7 +71,7 @@ describe('Finance Service Unit', () => {
         }),
         makeBaseService({
           id: 2,
-          financial_status: 'NAO_PAGO',
+          financial_status: 'PENDENTE',
           amount_total: 80,
           amount_paid: 0,
           amount_balance: 80,
@@ -82,21 +81,19 @@ describe('Finance Service Unit', () => {
       new Date('2026-05-30T12:00:00.000Z')
     );
 
-    expect(summary.total_overdue).toBe(150);
+    expect(summary.total_overdue).toBe(0);
   });
 
-  test('overdue respeita data local (vencimento hoje nao atrasa)', () => {
+  test('overdue permanece zero para pendente', () => {
     const now = new Date('2026-05-30T12:00:00.000Z');
-    const todayKey = toDateKeyInTimeZone(now);
-
     const summary = financeService.calculateSummaryFromServices(
       [
         makeBaseService({
-          financial_status: 'NAO_PAGO',
+          financial_status: 'PENDENTE',
           amount_total: 80,
           amount_paid: 0,
           amount_balance: 80,
-          payment_due_date: todayKey,
+          payment_due_date: '2026-05-30',
         }),
       ],
       now
@@ -109,7 +106,7 @@ describe('Finance Service Unit', () => {
     const grouped = financeService.groupByServiceType(
       [
         makeBaseService({ service_type_key: 'ras_voluntary', service_type_name: 'RAS Voluntario', amount_total: 100 }),
-        makeBaseService({ id: 2, service_type_key: 'ras_voluntary', service_type_name: 'RAS Voluntario', financial_status: 'NAO_PAGO', amount_total: 90, amount_paid: 0, amount_balance: 90 }),
+        makeBaseService({ id: 2, service_type_key: 'ras_voluntary', service_type_name: 'RAS Voluntario', financial_status: 'PENDENTE', amount_total: 90, amount_paid: 0, amount_balance: 90 }),
         makeBaseService({ id: 3, service_type_key: 'proeis', service_type_name: 'PROEIS', amount_total: 110 }),
       ],
       new Date('2026-05-30T12:00:00.000Z')
@@ -134,7 +131,7 @@ describe('Finance Service Unit', () => {
         makeBaseService({
           id: 2,
           operational_status: 'RESERVA',
-          financial_status: 'PREVISTO',
+          financial_status: 'PENDENTE',
           amount_total: 888,
         }),
       ],
@@ -150,7 +147,7 @@ describe('Finance Service Unit', () => {
       [
         makeBaseService({
           operational_status: 'RESERVA',
-          financial_status: 'PREVISTO',
+          financial_status: 'PENDENTE',
           amount_total: 300,
         }),
       ],
@@ -158,7 +155,7 @@ describe('Finance Service Unit', () => {
     );
 
     expect(summary.total_expected).toBe(0);
-    expect(summary.by_status.PREVISTO).toBe(0);
+    expect(summary.by_status.PENDENTE).toBe(0);
   });
 
   test('ORDINARY category e counts_in_financial true ainda fica fora', () => {
@@ -167,7 +164,7 @@ describe('Finance Service Unit', () => {
         makeBaseService({
           service_type_category: 'ORDINARY',
           counts_in_financial: 1,
-          financial_status: 'PAGO',
+          financial_status: 'RECEBIDO',
           amount_total: 500,
         }),
       ],
@@ -177,18 +174,18 @@ describe('Finance Service Unit', () => {
     expect(summary.total_expected).toBe(0);
     expect(summary.total_received).toBe(0);
   });
-  test('PENDENTE e EM_ATRASO entram no pendente real', () => {
+  test('somente PENDENTE entra no pendente real', () => {
     const summary = financeService.calculateSummaryFromServices(
       [
         makeBaseService({ financial_status: 'PENDENTE', amount_total: 90, amount_paid: 0, amount_balance: 90, payment_due_date: '2026-06-20' }),
-        makeBaseService({ id: 2, financial_status: 'EM_ATRASO', amount_total: 70, amount_paid: 0, amount_balance: 70, payment_due_date: '2026-06-20' }),
+        makeBaseService({ id: 2, financial_status: 'RECEBIDO', amount_total: 70, amount_paid: 70, amount_balance: 0, payment_due_date: '2026-06-20' }),
       ],
       new Date('2026-05-30T12:00:00.000Z')
     );
 
-    expect(summary.total_pending).toBe(160);
-    expect(summary.total_overdue).toBe(70);
+    expect(summary.total_pending).toBe(90);
+    expect(summary.total_overdue).toBe(0);
     expect(summary.by_status.PENDENTE).toBe(90);
-    expect(summary.by_status.EM_ATRASO).toBe(70);
+    expect(summary.by_status.RECEBIDO).toBe(70);
   });
 });

@@ -15,6 +15,7 @@ router.get('/:id', validator.validateIdParam, controller.getById);
 router.put('/:id', validator.validateIdParam, validator.validateUpdate, controller.update);
 router.post('/:id/transition', validator.validateIdParam, validator.validateTransition, controller.transition);
 router.post('/:id/confirm-payment', validator.validateIdParam, validator.validateConfirmPayment, controller.confirmPayment);
+router.post('/confirm-payment-pending', validator.validateListQuery, controller.confirmPendingPayments);
 router.post('/:id/promote-reservation', validator.validateIdParam, validator.validatePromoteReservation, controller.promoteReservation);
 router.delete('/:id', validator.validateIdParam, controller.remove);
 

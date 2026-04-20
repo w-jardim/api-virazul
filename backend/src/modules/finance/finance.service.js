@@ -1,10 +1,8 @@
 const repository = require('./finance.repository');
 const { FINANCIAL_STATUSES } = require('../services/services.rules');
-const { toDateKeyInTimeZone } = require('../alerts/alerts.time');
 
 const VALID_OPERATIONAL_FOR_FINANCE = ['TITULAR', 'CONVERTIDO_TITULAR', 'REALIZADO'];
-const PENDING_FINANCIAL_STATUSES = new Set(['NAO_PAGO', 'PENDENTE', 'EM_ATRASO']);
-const OVERDUE_FINANCIAL_STATUSES = new Set(['EM_ATRASO']);
+const PENDING_FINANCIAL_STATUSES = new Set(['PENDENTE']);
 
 function toMoney(value) {
   const numeric = Number(value ?? 0);
@@ -16,26 +14,6 @@ function toMoney(value) {
 
 function toNonNegativeMoney(value) {
   return Math.max(toMoney(value), 0);
-}
-
-function normalizeDueDateKey(value) {
-  if (!value) {
-    return null;
-  }
-
-  if (typeof value === 'string') {
-    const datePart = value.slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
-      return datePart;
-    }
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-
-  return toDateKeyInTimeZone(parsed);
 }
 
 function isFinanciallyRelevant(service) {
@@ -51,27 +29,6 @@ function isFinanciallyRelevant(service) {
 
 function isPendingFinancialStatus(status) {
   return PENDING_FINANCIAL_STATUSES.has(status);
-}
-
-function isOverdue(service, todayDateKey) {
-  if (!isPendingFinancialStatus(service.financial_status)) {
-    return false;
-  }
-
-  if (OVERDUE_FINANCIAL_STATUSES.has(service.financial_status)) {
-    return true;
-  }
-
-  if (!service.payment_due_date) {
-    return false;
-  }
-
-  const dueDateKey = normalizeDueDateKey(service.payment_due_date);
-  if (!dueDateKey) {
-    return false;
-  }
-
-  return dueDateKey < todayDateKey;
 }
 
 function computeSafePaidAmount({ amountTotal, amountPaid, amountBalance }) {
@@ -94,7 +51,7 @@ function initializeByStatus() {
 }
 
 function calculateSummaryFromServices(services, now = new Date()) {
-  const todayDateKey = toDateKeyInTimeZone(now);
+  void now;
   const byStatus = initializeByStatus();
 
   let totalExpected = 0;
@@ -108,7 +65,6 @@ function calculateSummaryFromServices(services, now = new Date()) {
     }
 
     const amountTotal = toNonNegativeMoney(service.amount_total);
-    const amountBalance = toNonNegativeMoney(service.amount_balance);
     const status = service.financial_status;
 
     totalExpected = toMoney(totalExpected + amountTotal);
@@ -116,7 +72,7 @@ function calculateSummaryFromServices(services, now = new Date()) {
       byStatus[status] = toMoney(byStatus[status] + amountTotal);
     }
 
-    if (status === 'PAGO') {
+    if (status === 'RECEBIDO') {
       const safePaid = computeSafePaidAmount({
         amountTotal,
         amountPaid: service.amount_paid,
@@ -127,14 +83,8 @@ function calculateSummaryFromServices(services, now = new Date()) {
 
     if (isPendingFinancialStatus(status)) {
       totalPending = toMoney(totalPending + amountTotal);
-      if (isOverdue(service, todayDateKey)) {
-        totalOverdue = toMoney(totalOverdue + amountTotal);
-      }
     }
 
-    if (status === 'PAGO_PARCIAL') {
-      totalPending = toMoney(totalPending + Math.max(amountBalance, 0));
-    }
   }
 
   return {
@@ -147,7 +97,7 @@ function calculateSummaryFromServices(services, now = new Date()) {
 }
 
 function groupByServiceType(services, now = new Date()) {
-  const todayDateKey = toDateKeyInTimeZone(now);
+  void now;
   const grouped = new Map();
 
   for (const service of services) {
@@ -169,11 +119,9 @@ function groupByServiceType(services, now = new Date()) {
 
     const current = grouped.get(key);
     const amountTotal = toNonNegativeMoney(service.amount_total);
-    const amountBalance = toNonNegativeMoney(service.amount_balance);
-
     current.total_expected = toMoney(current.total_expected + amountTotal);
 
-    if (service.financial_status === 'PAGO') {
+    if (service.financial_status === 'RECEBIDO') {
       const safePaid = computeSafePaidAmount({
         amountTotal,
         amountPaid: service.amount_paid,
@@ -184,14 +132,8 @@ function groupByServiceType(services, now = new Date()) {
 
     if (isPendingFinancialStatus(service.financial_status)) {
       current.total_pending = toMoney(current.total_pending + amountTotal);
-      if (isOverdue(service, todayDateKey)) {
-        current.total_overdue = toMoney(current.total_overdue + amountTotal);
-      }
     }
 
-    if (service.financial_status === 'PAGO_PARCIAL') {
-      current.total_pending = toMoney(current.total_pending + Math.max(amountBalance, 0));
-    }
   }
 
   return Array.from(grouped.values()).sort((a, b) => a.service_type.localeCompare(b.service_type));

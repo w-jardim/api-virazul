@@ -182,6 +182,7 @@ async function updateService(id, payload) {
   await pool.query(
     `UPDATE services
         SET service_type_id = ?,
+            financial_status = ?,
             start_at = ?,
             duration_hours = ?,
             reservation_expires_at = ?,
@@ -202,6 +203,7 @@ async function updateService(id, payload) {
         AND deleted_at IS NULL`,
     [
       payload.service_type_id,
+      payload.financial_status,
       payload.start_at,
       payload.duration_hours,
       payload.reservation_expires_at,
@@ -302,34 +304,81 @@ async function createStatusHistory(connection, payload) {
   );
 }
 
-async function syncPendingFinancialStatuses(referenceDate) {
-  const [result] = await pool.query(
+function buildBulkPendingWhere(filters = {}, options = {}) {
+  const alias = options.alias || '';
+  const prefixed = alias ? `${alias}.` : '';
+  const where = [
+    `${prefixed}deleted_at IS NULL`,
+    `${prefixed}financial_status = 'PENDENTE'`,
+    `${prefixed}operational_status IN ('TITULAR', 'CONVERTIDO_TITULAR', 'REALIZADO')`,
+  ];
+  const params = [];
+
+  if (filters.userId) {
+    where.push(`${prefixed}user_id = ?`);
+    params.push(filters.userId);
+  }
+
+  if (filters.serviceTypeId) {
+    where.push(`${prefixed}service_type_id = ?`);
+    params.push(filters.serviceTypeId);
+  }
+
+  return { where, params };
+}
+
+async function createBulkPaymentHistory(connection, filters, changedBy, reason = null) {
+  const { where, params } = buildBulkPendingWhere(filters, { alias: 's' });
+  await connection.query(
+    `INSERT INTO service_status_history (
+      service_id,
+      previous_operational_status,
+      previous_financial_status,
+      new_operational_status,
+      new_financial_status,
+      transition_type,
+      changed_by,
+      reason
+    )
+    SELECT
+      s.id,
+      s.operational_status,
+      s.financial_status,
+      s.operational_status,
+      'RECEBIDO',
+      'CONFIRMAR_PAGAMENTO_EM_LOTE',
+      ?,
+      ?
+    FROM services s
+    WHERE ${where.join(' AND ')}`,
+    [changedBy, reason, ...params]
+  );
+}
+
+async function confirmAllPendingPayments(connection, filters) {
+  const { where, params } = buildBulkPendingWhere(filters);
+  const [result] = await connection.query(
     `UPDATE services
-        SET financial_status = 'PENDENTE',
+        SET financial_status = 'RECEBIDO',
+            payment_at = COALESCE(payment_at, CURRENT_TIMESTAMP),
+            amount_paid = amount_total,
+            amount_balance = 0,
             version = version + 1
-      WHERE deleted_at IS NULL
-        AND payment_due_date IS NOT NULL
-        AND financial_status IN ('PREVISTO')
-        AND payment_due_date = DATE(?)`,
-    [referenceDate]
+      WHERE ${where.join(' AND ')}`,
+    params
   );
 
   return result.affectedRows || 0;
 }
 
-async function syncOverdueFinancialStatuses(referenceDate) {
-  const [result] = await pool.query(
-    `UPDATE services
-        SET financial_status = 'EM_ATRASO',
-            version = version + 1
-      WHERE deleted_at IS NULL
-        AND payment_due_date IS NOT NULL
-        AND financial_status IN ('PREVISTO', 'PENDENTE')
-        AND payment_due_date < DATE(?)`,
-    [referenceDate]
-  );
+async function syncPendingFinancialStatuses(referenceDate) {
+  void referenceDate;
+  return 0;
+}
 
-  return result.affectedRows || 0;
+async function syncOverdueFinancialStatuses(referenceDate) {
+  void referenceDate;
+  return 0;
 }
 
 function buildOverlapQuery(params) {
@@ -423,6 +472,8 @@ module.exports = {
   findByIdForUpdate,
   applyTransition,
   createStatusHistory,
+  createBulkPaymentHistory,
+  confirmAllPendingPayments,
   syncPendingFinancialStatuses,
   syncOverdueFinancialStatuses,
   findOverlaps,

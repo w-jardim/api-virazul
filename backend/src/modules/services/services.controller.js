@@ -41,6 +41,11 @@ const confirmPayment = asyncHandler(async (req, res) => {
   res.status(200).json({ data, meta: null, errors: null });
 });
 
+const confirmPendingPayments = asyncHandler(async (req, res) => {
+  const data = await service.confirmPendingPayments(req.user, req.query);
+  res.status(200).json({ data, meta: null, errors: null });
+});
+
 const promoteReservation = asyncHandler(async (req, res) => {
   const data = await service.promoteReservation(req.user, req.params.id, req.body);
   res.status(200).json({ data, meta: null, errors: null });
@@ -60,6 +65,7 @@ module.exports = {
   update,
   transition,
   confirmPayment,
+  confirmPendingPayments,
   promoteReservation,
   remove,
 };
