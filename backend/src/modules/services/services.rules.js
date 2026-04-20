@@ -11,12 +11,8 @@ const OPERATIONAL_STATUSES = [
   'NAO_CONVERTIDO',
 ];
 const FINANCIAL_STATUSES = [
-  'PREVISTO',
   'PENDENTE',
-  'EM_ATRASO',
-  'PAGO',
-  'PAGO_PARCIAL',
-  'NAO_PAGO',
+  'RECEBIDO',
 ];
 const SERVICE_SCOPES = [
   'ORDINARY',
@@ -144,9 +140,17 @@ function validatePaidPartial(amounts) {
   return amounts.amount_paid > 0 && amounts.amount_balance > 0;
 }
 
+function normalizeFinancialStatus(financialStatus) {
+  if (financialStatus === 'RECEBIDO' || financialStatus === 'PAGO') {
+    return 'RECEBIDO';
+  }
+
+  return 'PENDENTE';
+}
+
 function validatePaid(amounts) {
   return (
-    amounts.amount_total > 0 &&
+    amounts.amount_total >= 0 &&
     amounts.amount_balance === 0 &&
     amounts.amount_paid === amounts.amount_total
   );
@@ -159,18 +163,10 @@ function assertFinancialRules(financialStatus, amounts) {
 
   assertAmountIntegrity(amounts);
 
-  if (financialStatus === 'PAGO_PARCIAL' && !validatePaidPartial(amounts)) {
-    throw new AppError(
-      'INVALID_FINANCIAL_PAID_PARTIAL',
-      'PAGO_PARCIAL exige amount_paid > 0 e amount_balance > 0.',
-      400
-    );
-  }
-
-  if (financialStatus === 'PAGO' && !validatePaid(amounts)) {
+  if (financialStatus === 'RECEBIDO' && !validatePaid(amounts)) {
     throw new AppError(
       'INVALID_FINANCIAL_PAID',
-      'PAGO exige amount_total > 0, amount_balance = 0 e amount_paid = amount_total.',
+      'RECEBIDO exige amount_balance = 0 e amount_paid = amount_total.',
       400
     );
   }
@@ -215,26 +211,10 @@ function assertOperationalTransition(currentStatus, targetStatus) {
 function assertFinancialCompatibilityWithOperational(operationalStatus, financialStatus) {
   const blockedPaidStatuses = ['CANCELADO', 'FALTOU', 'NAO_CONVERTIDO', 'RESERVA'];
 
-  if (blockedPaidStatuses.includes(operationalStatus) && financialStatus === 'PAGO') {
+  if (blockedPaidStatuses.includes(operationalStatus) && financialStatus === 'RECEBIDO') {
     throw new AppError(
       'INVALID_FINANCIAL_TRANSITION',
-      `${operationalStatus} nao pode ser marcado como PAGO.`,
-      400
-    );
-  }
-
-  if (operationalStatus === 'RESERVA' && financialStatus === 'PAGO_PARCIAL') {
-    throw new AppError(
-      'INVALID_FINANCIAL_TRANSITION',
-      'RESERVA nao pode ser marcada como PAGO_PARCIAL.',
-      400
-    );
-  }
-
-  if (['CANCELADO', 'FALTOU', 'NAO_CONVERTIDO'].includes(operationalStatus) && financialStatus === 'PAGO_PARCIAL') {
-    throw new AppError(
-      'INVALID_FINANCIAL_TRANSITION',
-      `${operationalStatus} nao pode ser marcado como PAGO_PARCIAL.`,
+      `${operationalStatus} nao pode ser marcado como RECEBIDO.`,
       400
     );
   }
@@ -255,6 +235,7 @@ module.exports = {
   assertAmountIntegrity,
   validatePaidPartial,
   validatePaid,
+  normalizeFinancialStatus,
   assertFinancialRules,
   isOperationalTransitionAllowed,
   assertOperationalTransition,

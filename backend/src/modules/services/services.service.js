@@ -8,6 +8,17 @@ function isAdminMaster(user) {
   return user && user.role === 'ADMIN_MASTER';
 }
 
+function normalizeServiceFinancialStatus(service) {
+  if (!service) {
+    return service;
+  }
+
+  return {
+    ...service,
+    financial_status: rules.normalizeFinancialStatus(service.financial_status),
+  };
+}
+
 function assertCanReadService(authUser, service) {
   if (isAdminMaster(authUser)) {
     return;
@@ -297,7 +308,7 @@ async function create(authUser, payload) {
 
   const serviceType = await repository.findServiceTypeById(payload.service_type_id);
   const operationalStatus = payload.operational_status || 'TITULAR';
-  const financialStatus = payload.financial_status || 'PREVISTO';
+  const financialStatus = rules.normalizeFinancialStatus(payload.financial_status || 'PENDENTE');
   const { amounts, financialSnapshot } = await buildAmountsAndSnapshot(serviceType, payload, null, userId);
 
   assertTypeRules(serviceType, operationalStatus, amounts);
@@ -322,13 +333,13 @@ async function create(authUser, payload) {
     amount_discount: amounts.amount_discount,
     amount_total: amounts.amount_total,
     financial_snapshot: financialSnapshot,
-    payment_due_date: payload.payment_due_date || null,
+    payment_due_date: null,
     payment_at: null,
     is_complementary: Boolean(serviceType.counts_in_financial),
     created_by: authUser.id,
   });
 
-  return created;
+  return normalizeServiceFinancialStatus(created);
 }
 
 async function previewFinancial(authUser, payload) {
@@ -362,7 +373,8 @@ async function list(authUser, query) {
     serviceTypeId: queryServiceTypeId,
   };
 
-  return repository.list(filters);
+  const services = await repository.list(filters);
+  return services.map(normalizeServiceFinancialStatus);
 }
 
 async function getDateRange(authUser, query = {}) {
@@ -391,7 +403,7 @@ async function getById(authUser, id) {
   }
 
   assertCanReadService(authUser, service);
-  return service;
+  return normalizeServiceFinancialStatus(service);
 }
 
 async function update(authUser, id, payload) {
@@ -408,7 +420,7 @@ async function update(authUser, id, payload) {
   const serviceTypeId = payload.service_type_id || existing.service_type_id;
   const serviceType = await repository.findServiceTypeById(serviceTypeId);
   const operationalStatus = existing.operational_status;
-  const financialStatus = existing.financial_status;
+  const financialStatus = rules.normalizeFinancialStatus(existing.financial_status);
   const nextStartAt = payload.start_at || existing.start_at;
   const nextDurationHours = payload.duration_hours ?? existing.duration_hours;
 
@@ -454,8 +466,9 @@ async function update(authUser, id, payload) {
   rules.assertFinancialCompatibilityWithOperational(operationalStatus, financialStatus);
   rules.assertFinancialRules(financialStatus, amounts);
 
-  return repository.updateService(id, {
+  const updated = await repository.updateService(id, {
     service_type_id: serviceTypeId,
+    financial_status: financialStatus,
     start_at: nextStartAt,
     duration_hours: nextDurationHours,
     reservation_expires_at:
@@ -472,12 +485,11 @@ async function update(authUser, id, payload) {
     amount_discount: amounts.amount_discount,
     amount_total: amounts.amount_total,
     financial_snapshot: financialSnapshot,
-    payment_due_date:
-      Object.prototype.hasOwnProperty.call(payload, 'payment_due_date')
-        ? payload.payment_due_date
-        : existing.payment_due_date,
+    payment_due_date: null,
     is_complementary: Boolean(serviceType.counts_in_financial),
   });
+
+  return normalizeServiceFinancialStatus(updated);
 }
 
 async function transition(authUser, id, payload) {
@@ -492,7 +504,9 @@ async function transition(authUser, id, payload) {
   assertCanReadService(authUser, existing);
 
   let targetOperationalStatus = payload.target_operational_status || existing.operational_status;
-  let targetFinancialStatus = payload.target_financial_status || existing.financial_status;
+  let targetFinancialStatus = rules.normalizeFinancialStatus(
+    payload.target_financial_status || existing.financial_status
+  );
 
   rules.assertOperationalTransition(existing.operational_status, targetOperationalStatus);
 
@@ -516,12 +530,12 @@ async function transition(authUser, id, payload) {
     const ruleBEnabled = await repository.getUserPreferenceRuleB(existing.user_id);
 
     if (ruleBEnabled) {
-      targetFinancialStatus = 'PAGO';
+      targetFinancialStatus = 'RECEBIDO';
       paymentAt = performedAt;
       amountPaid = amounts.amount_total;
       amountBalance = 0;
     } else {
-      targetFinancialStatus = 'PREVISTO';
+      targetFinancialStatus = 'PENDENTE';
       paymentAt = null;
     }
   }
@@ -580,7 +594,8 @@ async function transition(authUser, id, payload) {
     connection.release();
   }
 
-  return repository.findById(id);
+  const updated = await repository.findById(id);
+  return normalizeServiceFinancialStatus(updated);
 }
 
 async function confirmPayment(authUser, id, payload = {}) {
@@ -593,8 +608,8 @@ async function confirmPayment(authUser, id, payload = {}) {
 
   assertCanReadService(authUser, existing);
 
-  if (existing.financial_status === 'PAGO') {
-    return existing;
+  if (rules.normalizeFinancialStatus(existing.financial_status) === 'RECEBIDO') {
+    return normalizeServiceFinancialStatus(existing);
   }
 
   const connection = await repository.getConnection();
@@ -610,7 +625,7 @@ async function confirmPayment(authUser, id, payload = {}) {
 
     await repository.applyTransition(connection, id, {
       operational_status: current.operational_status,
-      financial_status: 'PAGO',
+      financial_status: 'RECEBIDO',
       performed_at: current.performed_at,
       payment_at: paymentAt,
       amount_paid: current.amount_total,
@@ -622,7 +637,7 @@ async function confirmPayment(authUser, id, payload = {}) {
       previous_operational_status: current.operational_status,
       previous_financial_status: current.financial_status,
       new_operational_status: current.operational_status,
-      new_financial_status: 'PAGO',
+      new_financial_status: 'RECEBIDO',
       transition_type: 'CONFIRMAR_PAGAMENTO',
       changed_by: authUser.id,
       reason: payload.reason || null,
@@ -636,7 +651,43 @@ async function confirmPayment(authUser, id, payload = {}) {
     connection.release();
   }
 
-  return repository.findById(id);
+  const updated = await repository.findById(id);
+  return normalizeServiceFinancialStatus(updated);
+}
+
+async function confirmPendingPayments(authUser, query = {}) {
+  const queryUserId = parseOptionalPositiveInt(query.user_id, 'query.user_id');
+  const queryServiceTypeId = parseOptionalPositiveInt(
+    query.service_type_id,
+    'query.service_type_id'
+  );
+
+  if (queryUserId && !isAdminMaster(authUser) && queryUserId !== Number(authUser.id)) {
+    throw new AppError('FORBIDDEN', 'Usuario comum nao pode atualizar servicos de outro usuario.', 403);
+  }
+
+  const filters = {
+    userId: isAdminMaster(authUser) ? queryUserId : authUser.id,
+    serviceTypeId: queryServiceTypeId,
+  };
+
+  const connection = await repository.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    await repository.createBulkPaymentHistory(connection, filters, authUser.id, null);
+    const updatedCount = await repository.confirmAllPendingPayments(connection, filters);
+    await connection.commit();
+
+    return {
+      updated_count: updatedCount,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 async function promoteReservation(authUser, id, payload = {}) {
@@ -649,13 +700,11 @@ async function promoteReservation(authUser, id, payload = {}) {
 
 async function syncFinancialStatusByCalendar(referenceDate = new Date()) {
   const dateKey = toLocalDateKey(referenceDate);
-  const pendingUpdated = await repository.syncPendingFinancialStatuses(dateKey);
-  const overdueUpdated = await repository.syncOverdueFinancialStatuses(dateKey);
 
   return {
     date: dateKey,
-    pending_updated: pendingUpdated,
-    overdue_updated: overdueUpdated,
+    pending_updated: 0,
+    overdue_updated: 0,
   };
 }
 
@@ -685,6 +734,7 @@ module.exports = {
   update,
   transition,
   confirmPayment,
+  confirmPendingPayments,
   promoteReservation,
   syncFinancialStatusByCalendar,
   remove,

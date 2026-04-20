@@ -37,7 +37,7 @@ describe('Services Rules Unit', () => {
   test('regra de PAGO', () => {
     expect(validatePaid({ amount_total: 100, amount_balance: 0, amount_paid: 100 })).toBe(true);
     expect(validatePaid({ amount_total: 100, amount_balance: 0, amount_paid: 50 })).toBe(false);
-    expect(validatePaid({ amount_total: 0, amount_balance: 0, amount_paid: 0 })).toBe(false);
+    expect(validatePaid({ amount_total: 0, amount_balance: 0, amount_paid: 0 })).toBe(true);
   });
 
   test('validacao de transicoes', () => {
@@ -65,8 +65,7 @@ describe('Services Rules Unit', () => {
   });
 
   test('compatibilidade financeiro x operacional para reserva', () => {
-    expect(() => assertFinancialCompatibilityWithOperational('RESERVA', 'PAGO')).toThrow();
-    expect(() => assertFinancialCompatibilityWithOperational('RESERVA', 'PAGO_PARCIAL')).toThrow();
-    expect(() => assertFinancialCompatibilityWithOperational('RESERVA', 'PREVISTO')).not.toThrow();
+    expect(() => assertFinancialCompatibilityWithOperational('RESERVA', 'RECEBIDO')).toThrow();
+    expect(() => assertFinancialCompatibilityWithOperational('RESERVA', 'PENDENTE')).not.toThrow();
   });
 });

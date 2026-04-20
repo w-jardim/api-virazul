@@ -18,7 +18,7 @@ const createSchema = Joi.object({
   operational_status: Joi.string().valid(...INITIAL_OPERATIONAL_STATUSES).default('TITULAR'),
   reservation_expires_at: Joi.date().iso().allow(null),
   notes: Joi.string().allow('', null),
-  financial_status: Joi.string().valid(...FINANCIAL_STATUSES).default('PREVISTO'),
+  financial_status: Joi.string().valid(...FINANCIAL_STATUSES).default('PENDENTE'),
   rank_group: Joi.string().valid(...VALID_RANK_GROUPS).optional(),
   amount_base: Joi.number().min(0).default(0),
   amount_paid: Joi.number().min(0).default(0),
@@ -26,7 +26,6 @@ const createSchema = Joi.object({
   amount_transport: Joi.number().min(0).default(0),
   amount_additional: Joi.number().min(0).default(0),
   amount_discount: Joi.number().min(0).default(0),
-  payment_due_date: Joi.date().iso().allow(null),
 });
 
 const updateSchema = Joi.object({
@@ -43,7 +42,6 @@ const updateSchema = Joi.object({
   amount_transport: Joi.number().min(0).optional(),
   amount_additional: Joi.number().min(0).optional(),
   amount_discount: Joi.number().min(0).optional(),
-  payment_due_date: Joi.date().iso().allow(null),
   operational_status: Joi.any().forbidden(),
   financial_status: Joi.any().forbidden(),
 }).min(1);

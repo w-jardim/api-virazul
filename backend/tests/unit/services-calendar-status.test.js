@@ -15,18 +15,15 @@ describe('services calendar financial status sync', () => {
     jest.clearAllMocks();
   });
 
-  test('moves statuses to pendente and em_atraso based on payment_due_date window', async () => {
-    repository.syncPendingFinancialStatuses.mockResolvedValue(3);
-    repository.syncOverdueFinancialStatuses.mockResolvedValue(2);
-
+  test('returns a no-op sync result after removing overdue calendar rule', async () => {
     const result = await service.syncFinancialStatusByCalendar(new Date('2026-04-14T10:00:00.000Z'));
 
-    expect(repository.syncPendingFinancialStatuses).toHaveBeenCalledWith('2026-04-14');
-    expect(repository.syncOverdueFinancialStatuses).toHaveBeenCalledWith('2026-04-14');
+    expect(repository.syncPendingFinancialStatuses).not.toHaveBeenCalled();
+    expect(repository.syncOverdueFinancialStatuses).not.toHaveBeenCalled();
     expect(result).toEqual({
       date: '2026-04-14',
-      pending_updated: 3,
-      overdue_updated: 2,
+      pending_updated: 0,
+      overdue_updated: 0,
     });
   });
 });

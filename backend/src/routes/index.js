@@ -9,6 +9,8 @@ const agendaRoutes = require('../modules/agenda/agenda.routes');
 const planningRoutes = require('../modules/planning/planning.routes');
 const financeRoutes = require('../modules/finance/finance.routes');
 const reportsRoutes = require('../modules/reports/reports.routes');
+const analyticsRoutes = require('../modules/analytics/analytics.routes');
+const userAnalyticsRoutes = require('../modules/user-analytics/user-analytics.routes');
 const pricingRoutes = require('../modules/pricing/pricing.routes');
 const adminRoutes = require('../modules/admin/admin.routes');
 const billingRoutes = require('../modules/billing/billing.routes');
@@ -75,6 +77,8 @@ router.use('/agenda', agendaRoutes);
 router.use('/planning', planningRoutes);
 router.use('/finance', financeRoutes);
 router.use('/reports', reportsRoutes);
+router.use('/analytics', analyticsRoutes);
+router.use('/user-analytics', userAnalyticsRoutes);
 router.use('/pricing', pricingRoutes);
 router.use('/admin', adminRoutes);
 
