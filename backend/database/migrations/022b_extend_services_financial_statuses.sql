@@ -25,7 +25,7 @@ SET @constraint_exists := (
 );
 SET @sql := IF(
   @constraint_exists = 0,
-  'ALTER TABLE services ADD CONSTRAINT chk_services_financial_status CHECK (financial_status IN (''PREVISTO'', ''PENDENTE'', ''EM_ATRASO'', ''PAGO'', ''PAGO_PARCIAL'', ''NAO_PAGO''))',
+  'ALTER TABLE services ADD CONSTRAINT chk_services_financial_status CHECK (financial_status IN (''PREVISTO'', ''PENDENTE'', ''EM_ATRASO'', ''PAGO'', ''PAGO_PARCIAL'', ''NAO_PAGO'', ''RECEBIDO''))',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;

@@ -91,6 +91,22 @@ async function cancelSubscription(id) {
   );
 }
 
+async function setPartnerPlan(userId, days) {
+  const expires = new Date();
+  expires.setDate(expires.getDate() + days);
+
+  await pool.query(
+    `UPDATE subscriptions
+        SET plan = 'plan_partner', partner_expires_at = ?, status = 'active', updated_at = CURRENT_TIMESTAMP
+      WHERE owner_user_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [expires, userId]
+  );
+
+  return expires;
+}
+
 async function syncLegacyUserFields(userId, fields) {
   const mapping = {
     subscription: 'subscription',
@@ -128,5 +144,6 @@ module.exports = {
   updateSubscriptionCycle,
   attachGatewayData,
   cancelSubscription,
+  setPartnerPlan,
   syncLegacyUserFields,
 };

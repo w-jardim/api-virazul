@@ -15,6 +15,9 @@ const PLAN_DEFINITIONS = {
     gateway: null,
     trialDays: 0,
     isCourtesy: false,
+    has_ads: true,
+    service_limit: 0,
+    persistence: false,
   },
   plan_starter: {
     code: 'plan_starter',
@@ -27,6 +30,9 @@ const PLAN_DEFINITIONS = {
     gateway: 'stripe',
     trialDays: 0,
     isCourtesy: false,
+    has_ads: true,
+    service_limit: 5,
+    persistence: true,
   },
   plan_pro: {
     code: 'plan_pro',
@@ -39,6 +45,9 @@ const PLAN_DEFINITIONS = {
     gateway: 'stripe',
     trialDays: 7,
     isCourtesy: false,
+    has_ads: false,
+    service_limit: Infinity,
+    persistence: true,
   },
   plan_partner: {
     code: 'plan_partner',
@@ -51,7 +60,23 @@ const PLAN_DEFINITIONS = {
     gateway: null,
     trialDays: 0,
     isCourtesy: true,
+    has_ads: false,
+    service_limit: Infinity,
+    persistence: true,
   },
+};
+
+// Operational plan map used by middlewares (includes preview for unauthenticated users)
+const PLANS = {
+  preview: {
+    has_ads: true,
+    service_limit: 0,
+    persistence: false,
+  },
+  plan_free: PLAN_DEFINITIONS.plan_free,
+  plan_starter: PLAN_DEFINITIONS.plan_starter,
+  plan_pro: PLAN_DEFINITIONS.plan_pro,
+  plan_partner: PLAN_DEFINITIONS.plan_partner,
 };
 
 function isKnownPlan(code) {
@@ -63,5 +88,6 @@ module.exports = {
   LEGACY_PLAN_CODES,
   ALL_PLAN_CODES,
   PLAN_DEFINITIONS,
+  PLANS,
   isKnownPlan,
 };
