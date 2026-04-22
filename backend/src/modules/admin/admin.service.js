@@ -16,13 +16,6 @@ async function createUser(payload) {
     throw new AppError('CREATE_USER_FAILED', 'Nao foi possivel criar o usuario.', 500);
   }
 
-  if (user.subscription === 'trial') {
-    const billingService = require('../billing/billing.service');
-    billingService.startTrial(user.id).catch((err) => {
-      logger.error('billing.trial.admin_create.failed', { user_id: user.id, error: err.message });
-    });
-  }
-
   return user;
 }
 
@@ -57,16 +50,8 @@ async function changeSubscription(id, subscription) {
   const subscriptionsRepo = require('../subscriptions/subscriptions.repository');
   const sub = await subscriptionsRepo.findCurrentByUserId(id);
 
-  if (subscription === 'trial') {
-    if (!sub) {
-      const billingService = require('../billing/billing.service');
-      await billingService.startTrial(id);
-    } else if (sub.status !== 'trialing') {
-      await subscriptionsRepo.updateSubscriptionStatus(sub.id, 'trialing');
-      await subscriptionsRepo.syncLegacyUserFields(id, { subscription: 'trial' });
-    }
-  } else if (subscription === 'premium' || subscription === 'plan_starter' || subscription === 'plan_pro') {
-    const planCode = subscription === 'premium' ? 'premium' : subscription;
+  if (subscription === 'plan_starter' || subscription === 'plan_pro') {
+    const planCode = subscription;
     const now = new Date();
     const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     if (sub) {
@@ -90,11 +75,11 @@ async function changeSubscription(id, subscription) {
       paymentStatus: 'paid',
       paymentDueDate: periodEnd.toISOString().slice(0, 10),
     });
-  } else if (subscription === 'free' || subscription === 'plan_free' || subscription === 'plan_partner') {
+  } else if (subscription === 'plan_free' || subscription === 'plan_partner') {
     if (sub && !['canceled', 'expired'].includes(sub.status)) {
       await subscriptionsRepo.cancelSubscription(sub.id);
     }
-    const planCode = subscription === 'free' ? 'free' : subscription;
+    const planCode = subscription;
     await subscriptionsRepo.syncLegacyUserFields(id, {
       subscription: planCode,
       paymentStatus: 'pending',

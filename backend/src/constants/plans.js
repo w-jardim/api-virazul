@@ -1,5 +1,5 @@
 const NEW_PLAN_CODES = ['plan_free', 'plan_starter', 'plan_pro', 'plan_partner'];
-const LEGACY_PLAN_CODES = ['free', 'trial', 'premium'];
+const LEGACY_PLAN_CODES = [];
 
 const ALL_PLAN_CODES = [...NEW_PLAN_CODES, ...LEGACY_PLAN_CODES];
 

@@ -6,7 +6,7 @@ const USER_FIELDS = `id, name, email, role, status, subscription, payment_status
 function normalizeBilling(user) {
   if (!user) return user;
 
-  if (['free', 'plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
+  if (['plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
     user.payment_status = null;
     user.payment_due_date = null;
   }
@@ -42,7 +42,7 @@ async function create(user) {
   let paymentStatus = user.payment_status || 'pending';
   let paymentDueDate = user.payment_due_date || null;
 
-  if (['free', 'plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
+  if (['plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
     paymentStatus = 'pending';
     paymentDueDate = null;
   }
@@ -81,7 +81,7 @@ async function updateById(id, payload) {
   if (payload.status !== undefined) { fields.push('status = ?'); values.push(payload.status); }
   if (payload.subscription !== undefined) { fields.push('subscription = ?'); values.push(payload.subscription); }
 
-  if (payload.subscription !== 'free' && payload.subscription !== 'plan_free' && payload.subscription !== 'plan_partner') {
+  if (payload.subscription !== 'plan_free' && payload.subscription !== 'plan_partner') {
     if (payload.payment_status !== undefined) { fields.push('payment_status = ?'); values.push(payload.payment_status); }
     if (payload.payment_due_date !== undefined) { fields.push('payment_due_date = ?'); values.push(payload.payment_due_date || null); }
   }
@@ -107,7 +107,7 @@ async function deleteById(id) {
 }
 
 async function updateSubscription(id, subscription) {
-  if (subscription === 'free' || subscription === 'plan_free' || subscription === 'plan_partner') {
+  if (subscription === 'plan_free' || subscription === 'plan_partner') {
     await pool.query(
       'UPDATE users SET subscription = ? WHERE id = ? AND deleted_at IS NULL',
       [subscription, id]
@@ -123,7 +123,7 @@ async function updateSubscription(id, subscription) {
 
 async function updatePaymentStatus(id, paymentStatus) {
   const user = await findById(id);
-  if (!user || ['free', 'plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
+  if (!user || ['plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
     return user;
   }
   await pool.query(
@@ -147,8 +147,10 @@ async function getStats() {
   // Subscription stats from the authoritative subscriptions table
   const [[subRow]] = await pool.query(
     `SELECT
-      COALESCE(SUM(s.status = 'trialing'), 0) AS trial,
-      COALESCE(SUM(s.status = 'active' AND s.plan = 'premium'), 0) AS premium
+      COALESCE(SUM(s.status = 'active' AND s.plan = 'plan_free'), 0) AS plan_free,
+      COALESCE(SUM(s.status = 'active' AND s.plan = 'plan_starter'), 0) AS plan_starter,
+      COALESCE(SUM(s.status = 'active' AND s.plan = 'plan_pro'), 0) AS plan_pro,
+      COALESCE(SUM(s.status = 'active' AND s.plan = 'plan_partner'), 0) AS plan_partner
      FROM subscriptions s
      INNER JOIN (
        SELECT owner_user_id, MAX(id) AS max_id
@@ -160,17 +162,20 @@ async function getStats() {
   );
 
   const total = Number(userRow.total_users) || 0;
-  const trial = Number(subRow.trial) || 0;
-  const premium = Number(subRow.premium) || 0;
+  const planFree = Number(subRow.plan_free) || 0;
+  const planStarter = Number(subRow.plan_starter) || 0;
+  const planPro = Number(subRow.plan_pro) || 0;
+  const planPartner = Number(subRow.plan_partner) || 0;
 
   return {
     total_users: total,
     active_users: Number(userRow.active_users) || 0,
     inactive_users: Number(userRow.inactive_users) || 0,
     suspended_users: Number(userRow.suspended_users) || 0,
-    free: Math.max(0, total - trial - premium),
-    trial,
-    premium,
+    plan_free: planFree,
+    plan_starter: planStarter,
+    plan_pro: planPro,
+    plan_partner: Math.max(0, planPartner + (total - planFree - planStarter - planPro - planPartner)),
   };
 }
 

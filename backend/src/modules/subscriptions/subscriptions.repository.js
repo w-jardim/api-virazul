@@ -39,7 +39,7 @@ async function createTrialSubscription(userId, trialDays) {
   const [result] = await pool.query(
     `INSERT INTO subscriptions
        (owner_user_id, plan, status, started_at, trial_ends_at, current_period_start, current_period_end)
-     VALUES (?, 'trial', 'trialing', ?, ?, ?, ?)`,
+     VALUES (?, 'plan_pro', 'trialing', ?, ?, ?, ?)`,
     [userId, now, trialEndsAt, now, trialEndsAt]
   );
   return result.insertId;
