@@ -6,7 +6,7 @@ const USER_FIELDS = `id, name, email, role, status, subscription, payment_status
 function normalizeBilling(user) {
   if (!user) return user;
 
-  if (user.subscription === 'free' || user.role === 'ADMIN_MASTER') {
+  if (['free', 'plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
     user.payment_status = null;
     user.payment_due_date = null;
   }
@@ -42,7 +42,7 @@ async function create(user) {
   let paymentStatus = user.payment_status || 'pending';
   let paymentDueDate = user.payment_due_date || null;
 
-  if (user.subscription === 'free' || user.role === 'ADMIN_MASTER') {
+  if (['free', 'plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
     paymentStatus = 'pending';
     paymentDueDate = null;
   }
@@ -81,7 +81,7 @@ async function updateById(id, payload) {
   if (payload.status !== undefined) { fields.push('status = ?'); values.push(payload.status); }
   if (payload.subscription !== undefined) { fields.push('subscription = ?'); values.push(payload.subscription); }
 
-  if (payload.subscription !== 'free') {
+  if (payload.subscription !== 'free' && payload.subscription !== 'plan_free' && payload.subscription !== 'plan_partner') {
     if (payload.payment_status !== undefined) { fields.push('payment_status = ?'); values.push(payload.payment_status); }
     if (payload.payment_due_date !== undefined) { fields.push('payment_due_date = ?'); values.push(payload.payment_due_date || null); }
   }
@@ -107,7 +107,7 @@ async function deleteById(id) {
 }
 
 async function updateSubscription(id, subscription) {
-  if (subscription === 'free') {
+  if (subscription === 'free' || subscription === 'plan_free' || subscription === 'plan_partner') {
     await pool.query(
       'UPDATE users SET subscription = ? WHERE id = ? AND deleted_at IS NULL',
       [subscription, id]
@@ -123,7 +123,7 @@ async function updateSubscription(id, subscription) {
 
 async function updatePaymentStatus(id, paymentStatus) {
   const user = await findById(id);
-  if (!user || user.subscription === 'free' || user.role === 'ADMIN_MASTER') {
+  if (!user || ['free', 'plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
     return user;
   }
   await pool.query(

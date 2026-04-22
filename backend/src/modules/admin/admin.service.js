@@ -65,36 +65,38 @@ async function changeSubscription(id, subscription) {
       await subscriptionsRepo.updateSubscriptionStatus(sub.id, 'trialing');
       await subscriptionsRepo.syncLegacyUserFields(id, { subscription: 'trial' });
     }
-  } else if (subscription === 'premium') {
+  } else if (subscription === 'premium' || subscription === 'plan_starter' || subscription === 'plan_pro') {
+    const planCode = subscription === 'premium' ? 'premium' : subscription;
     const now = new Date();
     const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     if (sub) {
       await subscriptionsRepo.updateSubscriptionCycle(sub.id, {
         status: 'active',
-        plan: 'premium',
+        plan: planCode,
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd,
       });
     } else {
       await subscriptionsRepo.createSubscription({
         userId: id,
-        plan: 'premium',
+        plan: planCode,
         status: 'active',
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd,
       });
     }
     await subscriptionsRepo.syncLegacyUserFields(id, {
-      subscription: 'premium',
+      subscription: planCode,
       paymentStatus: 'paid',
       paymentDueDate: periodEnd.toISOString().slice(0, 10),
     });
-  } else if (subscription === 'free') {
+  } else if (subscription === 'free' || subscription === 'plan_free' || subscription === 'plan_partner') {
     if (sub && !['canceled', 'expired'].includes(sub.status)) {
       await subscriptionsRepo.cancelSubscription(sub.id);
     }
+    const planCode = subscription === 'free' ? 'free' : subscription;
     await subscriptionsRepo.syncLegacyUserFields(id, {
-      subscription: 'free',
+      subscription: planCode,
       paymentStatus: 'pending',
       paymentDueDate: null,
     });
