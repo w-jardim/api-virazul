@@ -1,20 +1,18 @@
 services:
   mysql:
     image: mysql:8.0
-    container_name: viraazul-mysql
+    container_name: viraazul-mysql-dev
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: "!061290058Th"
-      MYSQL_DATABASE: viraazul
-      MYSQL_USER: viraazul_user
-      MYSQL_PASSWORD: virazul_pass
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: virazul_dev
       TZ: America/Sao_Paulo
     ports:
-      - "3307:3306"
+      - "3308:3306"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql_dev_data:/var/lib/mysql
     healthcheck:
-      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1']
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -23,37 +21,15 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: virazul-api
+    container_name: virazul-api-dev
     restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy
-    environment:
-      PORT: 3000
-      NODE_ENV: production
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_NAME: viraazul
-      DB_USER: viraazul_user
-      DB_PASSWORD: virazul_pass
-      JWT_SECRET: troque-este-segredo-em-producao
-      JWT_EXPIRES_IN: 1h
-      CORS_ORIGIN: http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000
-      RATE_LIMIT_GLOBAL_WINDOW_MS: 900000
-      RATE_LIMIT_GLOBAL_MAX: 300
-      RATE_LIMIT_LOGIN_WINDOW_MS: 900000
-      RATE_LIMIT_LOGIN_MAX: 10
-      SUBSCRIPTION_ENFORCE: 'false'
-      SUBSCRIPTION_BLOCKED_STATUSES: suspended,cancelled,canceled,inactive
-      TZ: America/Sao_Paulo
     ports:
-      - '3000:3000'
-    healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/v1/health']
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      - "3001:3000"
+    env_file:
+      - ./backend/.env
 
 volumes:
-  mysql_data:
-
+  mysql_dev_data:
