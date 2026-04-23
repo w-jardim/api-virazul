@@ -12,6 +12,7 @@ router.post('/webhooks/mercadopago', (req, res) => {
 
 // Protected endpoints
 router.get('/subscription', authMiddleware, billingController.getSubscription);
+router.post('/checkout/pro', authMiddleware, billingController.createCheckoutPremium);
 router.post('/checkout/premium', authMiddleware, billingController.createCheckoutPremium);
 router.post('/pix/charge', authMiddleware, billingController.createPixCharge);
 router.post('/subscription/cancel', authMiddleware, billingController.cancelSubscription);

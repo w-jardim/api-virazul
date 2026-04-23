@@ -39,7 +39,7 @@ async function createTrialSubscription(userId, trialDays) {
   const [result] = await pool.query(
     `INSERT INTO subscriptions
        (owner_user_id, plan, status, started_at, trial_ends_at, current_period_start, current_period_end)
-     VALUES (?, 'trial', 'trialing', ?, ?, ?, ?)`,
+     VALUES (?, 'plan_pro', 'trialing', ?, ?, ?, ?)`,
     [userId, now, trialEndsAt, now, trialEndsAt]
   );
   return result.insertId;
@@ -91,6 +91,22 @@ async function cancelSubscription(id) {
   );
 }
 
+async function setPartnerPlan(userId, days) {
+  const expires = new Date();
+  expires.setDate(expires.getDate() + days);
+
+  await pool.query(
+    `UPDATE subscriptions
+        SET plan = 'plan_partner', partner_expires_at = ?, status = 'active', updated_at = CURRENT_TIMESTAMP
+      WHERE owner_user_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [expires, userId]
+  );
+
+  return expires;
+}
+
 async function syncLegacyUserFields(userId, fields) {
   const mapping = {
     subscription: 'subscription',
@@ -128,5 +144,6 @@ module.exports = {
   updateSubscriptionCycle,
   attachGatewayData,
   cancelSubscription,
+  setPartnerPlan,
   syncLegacyUserFields,
 };

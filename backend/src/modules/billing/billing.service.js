@@ -26,7 +26,7 @@ async function startTrial(userId) {
   const subId = await subscriptionsRepo.createTrialSubscription(userId, trialDays);
 
   await subscriptionsRepo.syncLegacyUserFields(userId, {
-    subscription: 'trial',
+    subscription: 'plan_pro',
     paymentStatus: 'pending',
     paymentDueDate: null,
   });
@@ -44,14 +44,14 @@ async function getSubscriptionStatus(userId) {
 
   if (sub.status === 'trialing' && sub.trial_ends_at && new Date() > new Date(sub.trial_ends_at)) {
     await subscriptionsRepo.updateSubscriptionStatus(sub.id, 'expired');
-    await subscriptionsRepo.syncLegacyUserFields(userId, { subscription: 'free' });
+    await subscriptionsRepo.syncLegacyUserFields(userId, { subscription: 'plan_free' });
     sub.status = 'expired';
   }
 
   const latestPayment = await billingRepo.findLatestPaymentByUserId(userId);
 
   return {
-    plan: sub.plan || 'free',
+    plan: sub.plan || 'plan_free',
     plan_name: sub.plan_name || sub.plan || 'Free',
     plan_price_cents: sub.price_cents || 0,
     status: sub.status,
@@ -75,7 +75,7 @@ async function getSubscriptionStatus(userId) {
 
 function buildFreeResponse() {
   return {
-    plan: 'free',
+    plan: 'plan_free',
     plan_name: 'Free',
     plan_price_cents: 0,
     status: 'active',
@@ -95,9 +95,9 @@ async function createCheckoutPremium(userId, userEmail) {
     throw new AppError('BILLING_NOT_CONFIGURED', 'Gateway de pagamento nao configurado.', 503);
   }
 
-  const plan = await billingRepo.findPlanByCode('premium');
+  const plan = await billingRepo.findPlanByCode('plan_pro');
   if (!plan) {
-    throw new AppError('BILLING_PLAN_NOT_FOUND', 'Plano premium nao encontrado.', 404);
+    throw new AppError('BILLING_PLAN_NOT_FOUND', 'Plano Pro nao encontrado.', 404);
   }
 
   const sub = await subscriptionsRepo.findCurrentByUserId(userId);
@@ -117,7 +117,7 @@ async function createCheckoutPremium(userId, userEmail) {
   const preferenceBody = {
     items: [
       {
-        id: 'plan_premium',
+        id: 'plan_pro',
         title: `Virazul - ${plan.name}`,
         quantity: 1,
         unit_price: amountBRL,
@@ -166,9 +166,9 @@ async function createPixCharge(userId, userEmail) {
     throw new AppError('BILLING_NOT_CONFIGURED', 'Gateway de pagamento nao configurado.', 503);
   }
 
-  const plan = await billingRepo.findPlanByCode('premium');
+  const plan = await billingRepo.findPlanByCode('plan_pro');
   if (!plan) {
-    throw new AppError('BILLING_PLAN_NOT_FOUND', 'Plano premium nao encontrado.', 404);
+    throw new AppError('BILLING_PLAN_NOT_FOUND', 'Plano Pro nao encontrado.', 404);
   }
 
   const sub = await subscriptionsRepo.findCurrentByUserId(userId);
@@ -236,7 +236,7 @@ async function cancelUserSubscription(userId) {
     throw new AppError('BILLING_NO_SUBSCRIPTION', 'Nenhuma assinatura encontrada.', 404);
   }
 
-  if (sub.plan === 'free') {
+  if (sub.plan === 'plan_free' || sub.plan === 'plan_partner') {
     throw new AppError(
       'BILLING_FREE_ADMIN_ONLY',
       'O plano Free é uma cortesia administrativa e só pode ser alterado por um administrador.',
@@ -244,7 +244,7 @@ async function cancelUserSubscription(userId) {
     );
   }
 
-  if (sub.plan === 'trial' && sub.status === 'trialing') {
+  if (sub.plan === 'plan_pro' && sub.status === 'trialing') {
     throw new AppError(
       'BILLING_TRIAL_NOT_CANCELABLE',
       'O período de teste permanece ativo até o vencimento e não pode ser cancelado por autoatendimento.',
@@ -256,17 +256,17 @@ async function cancelUserSubscription(userId) {
     throw new AppError('BILLING_ALREADY_CANCELED', 'Assinatura ja esta cancelada ou expirada.', 400);
   }
 
-  if (sub.plan !== 'premium') {
+  if (sub.plan !== 'plan_pro') {
     throw new AppError(
       'BILLING_PLAN_NOT_CANCELABLE',
-      'Somente assinaturas Premium podem ser canceladas por autoatendimento.',
+      'Somente assinaturas Pro podem ser canceladas por autoatendimento.',
       400
     );
   }
 
   await subscriptionsRepo.cancelSubscription(sub.id);
   await subscriptionsRepo.syncLegacyUserFields(userId, {
-    subscription: 'premium',
+    subscription: 'plan_pro',
     paymentStatus: 'cancelled',
     paymentDueDate: null,
   });
@@ -274,7 +274,7 @@ async function cancelUserSubscription(userId) {
   logger.info('billing.subscription.canceled', {
     user_id: userId,
     sub_id: sub.id,
-    legacy_subscription: 'premium',
+    legacy_subscription: 'plan_pro',
   });
 
   return { canceled: true };
@@ -380,7 +380,7 @@ async function activateSubscriptionForPayment(paymentDbId, mpPayment) {
   if (sub) {
     await subscriptionsRepo.updateSubscriptionCycle(sub.id, {
       status: 'active',
-      plan: 'premium',
+      plan: 'plan_pro',
       currentPeriodStart: now,
       currentPeriodEnd: periodEnd,
     });
@@ -392,7 +392,7 @@ async function activateSubscriptionForPayment(paymentDbId, mpPayment) {
   } else {
     const newSubId = await subscriptionsRepo.createSubscription({
       userId,
-      plan: 'premium',
+      plan: 'plan_pro',
       status: 'active',
       currentPeriodStart: now,
       currentPeriodEnd: periodEnd,
@@ -405,7 +405,7 @@ async function activateSubscriptionForPayment(paymentDbId, mpPayment) {
   }
 
   await subscriptionsRepo.syncLegacyUserFields(userId, {
-    subscription: 'premium',
+    subscription: 'plan_pro',
     paymentStatus: 'paid',
     paymentDueDate: periodEnd.toISOString().slice(0, 10),
   });

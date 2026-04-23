@@ -1,5 +1,6 @@
 const Joi = require('joi');
 const AppError = require('../../utils/app-error');
+const { ALL_PLAN_CODES } = require('../../constants/plans');
 
 const createUserSchema = Joi.object({
   name: Joi.string().min(3).max(255).required(),
@@ -7,7 +8,7 @@ const createUserSchema = Joi.object({
   password: Joi.string().min(6).required(),
   role: Joi.string().valid('POLICE', 'ADMIN_MASTER').required(),
   status: Joi.string().valid('active', 'inactive', 'suspended').required(),
-  subscription: Joi.string().valid('free', 'trial', 'premium').required(),
+  subscription: Joi.string().valid(...ALL_PLAN_CODES).required(),
   payment_status: Joi.string().valid('paid', 'pending', 'overdue').default('pending'),
   payment_due_date: Joi.date().iso().allow(null, ''),
   rank_group: Joi.string().allow(null, '').max(100),
@@ -19,14 +20,14 @@ const updateUserSchema = Joi.object({
   password: Joi.string().min(6),
   role: Joi.string().valid('POLICE', 'ADMIN_MASTER'),
   status: Joi.string().valid('active', 'inactive', 'suspended'),
-  subscription: Joi.string().valid('free', 'trial', 'premium'),
+  subscription: Joi.string().valid(...ALL_PLAN_CODES),
   payment_status: Joi.string().valid('paid', 'pending', 'overdue'),
   payment_due_date: Joi.date().iso().allow(null, ''),
   rank_group: Joi.string().allow(null, '').max(100),
 }).or('name', 'email', 'password', 'role', 'status', 'subscription', 'payment_status', 'payment_due_date', 'rank_group');
 
 const changeSubscriptionSchema = Joi.object({
-  subscription: Joi.string().valid('free', 'trial', 'premium').required(),
+  subscription: Joi.string().valid(...ALL_PLAN_CODES).required(),
 });
 
 const changePaymentStatusSchema = Joi.object({

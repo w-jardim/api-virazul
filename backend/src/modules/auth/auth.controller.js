@@ -72,13 +72,7 @@ async function register(req, res, next) {
       rank_group: rank_group || null,
       role: 'POLICE',
       status: 'active',
-      subscription: 'trial',
-    });
-
-    // Start real trial subscription (non-blocking — user response is not delayed)
-    const billingService = require('../billing/billing.service');
-    billingService.startTrial(created.id).catch((err) => {
-      logger.error('billing.trial.register.failed', { user_id: created.id, error: err.message });
+      subscription: 'plan_free',
     });
 
     const token = jwtUtils.sign({ id: created.id, email: created.email, role: created.role });
@@ -92,7 +86,7 @@ async function register(req, res, next) {
           email: created.email,
           role: created.role,
           rank_group: created.rank_group || null,
-          subscription: created.subscription || 'trial',
+          subscription: created.subscription || 'plan_free',
           payment_due_date: created.payment_due_date || null,
           created_at: created.created_at,
         },
@@ -105,3 +99,4 @@ async function register(req, res, next) {
     return next(error);
   }
 }
+
