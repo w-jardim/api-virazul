@@ -20,7 +20,7 @@ function buildSession(user) {
       email: user.email,
       role: user.role,
       rank_group: user.rank_group || null,
-      subscription: user.subscription || 'free',
+      subscription: user.subscription || 'plan_free',
       payment_due_date: user.payment_due_date || null,
       created_at: user.created_at,
     },
@@ -106,13 +106,6 @@ async function loginWithGoogle(idToken) {
 
   await authRepository.updateLastLogin(user.id);
   logger.info('auth.google.login.success', { user_id: user.id, email });
-
-  if (isNewUser) {
-    const billingService = require('../billing/billing.service');
-    billingService.startTrial(user.id).catch((err) => {
-      logger.warn('billing.trial.google.failed', { user_id: user.id, error: err.message });
-    });
-  }
 
   return buildSession(user);
 }
