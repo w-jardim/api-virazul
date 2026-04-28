@@ -145,9 +145,18 @@ async function updateSubscription(id, subscription) {
 
 async function updatePaymentStatus(id, paymentStatus) {
   const user = await findById(id);
-  if (!user || ['plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
+  if (!user) {
     return user;
   }
+
+  if (['plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
+    await pool.query(
+      'UPDATE users SET payment_status = NULL, payment_due_date = NULL WHERE id = ? AND deleted_at IS NULL',
+      [id]
+    );
+    return findById(id);
+  }
+
   await pool.query(
     'UPDATE users SET payment_status = ? WHERE id = ? AND deleted_at IS NULL',
     [paymentStatus, id]

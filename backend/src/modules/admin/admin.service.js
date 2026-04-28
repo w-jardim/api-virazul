@@ -3,6 +3,12 @@ const logger = require('../../utils/logger');
 const { normalizePlanCode } = require('../../utils/plan-access');
 const adminRepository = require('./admin.repository');
 
+const ADMIN_PAYMENT_STATUS_TO_SUBSCRIPTION_STATUS = {
+  paid: 'active',
+  pending: 'pending',
+  overdue: 'past_due',
+};
+
 async function getStats() {
   return adminRepository.getStats();
 }
@@ -127,7 +133,41 @@ async function changePaymentStatus(id, paymentStatus) {
   if (!user) {
     throw new AppError('USER_NOT_FOUND', 'Usuario nao encontrado.', 404);
   }
-  return adminRepository.updatePaymentStatus(id, paymentStatus);
+
+  if (['plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
+    return adminRepository.updatePaymentStatus(id, null);
+  }
+
+  const subscriptionStatus = ADMIN_PAYMENT_STATUS_TO_SUBSCRIPTION_STATUS[paymentStatus];
+  if (!subscriptionStatus) {
+    throw new AppError('INVALID_PAYMENT_STATUS', 'Status de pagamento invalido.', 400);
+  }
+
+  const subscriptionsRepo = require('../subscriptions/subscriptions.repository');
+  const currentSubscription = await subscriptionsRepo.findCurrentByUserId(id);
+
+  if (currentSubscription) {
+    await subscriptionsRepo.updateLatestStatusByUserId(id, subscriptionStatus);
+  } else {
+    await subscriptionsRepo.createSubscription({
+      userId: id,
+      plan: user.subscription,
+      status: subscriptionStatus,
+      trialEndsAt: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: user.payment_due_date || null,
+      partnerExpiresAt: null,
+    });
+  }
+
+  const updatedUser = await adminRepository.updatePaymentStatus(id, paymentStatus);
+  logger.info('admin.payment-status.changed', {
+    user_id: id,
+    subscription: user.subscription,
+    payment_status: paymentStatus,
+    subscription_status: subscriptionStatus,
+  });
+  return updatedUser;
 }
 
 module.exports = {

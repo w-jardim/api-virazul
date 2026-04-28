@@ -12,7 +12,14 @@ jest.mock('../../src/modules/admin/admin.repository', () => ({
   getStats: jest.fn(),
 }));
 
+jest.mock('../../src/modules/subscriptions/subscriptions.repository', () => ({
+  findCurrentByUserId: jest.fn(),
+  updateLatestStatusByUserId: jest.fn(),
+  createSubscription: jest.fn(),
+}));
+
 const adminRepository = require('../../src/modules/admin/admin.repository');
+const subscriptionsRepository = require('../../src/modules/subscriptions/subscriptions.repository');
 const env = require('../../src/config/env');
 const app = require('../../src/app');
 
@@ -70,11 +77,13 @@ describe('Admin Integration', () => {
   });
 
   test('PATCH /api/v1/admin/users/:id/payment-status updates payment_status', async () => {
-    adminRepository.findById.mockResolvedValue({ id: 10, email: 'policial.teste@viraazul.local' });
+    adminRepository.findById.mockResolvedValue({ id: 10, email: 'policial.teste@viraazul.local', subscription: 'plan_pro', role: 'POLICE' });
     adminRepository.updatePaymentStatus.mockResolvedValue({
       id: 10,
+      subscription: 'plan_pro',
       payment_status: 'paid',
     });
+    subscriptionsRepository.findCurrentByUserId.mockResolvedValue({ id: 22, plan: 'plan_pro', status: 'past_due' });
 
     const response = await request(app)
       .patch('/api/v1/admin/users/10/payment-status')
@@ -83,8 +92,9 @@ describe('Admin Integration', () => {
       .expect(200);
 
     expect(response.body.errors).toBeNull();
-    expect(response.body.data).toMatchObject({ id: 10, payment_status: 'paid' });
+    expect(response.body.data).toMatchObject({ id: 10, subscription: 'plan_pro', payment_status: 'paid' });
     expect(adminRepository.updatePaymentStatus).toHaveBeenCalledWith(10, 'paid');
+    expect(subscriptionsRepository.updateLatestStatusByUserId).toHaveBeenCalledWith(10, 'active');
   });
 
   test('GET /api/v1/admin/stats returns aggregated counts', async () => {

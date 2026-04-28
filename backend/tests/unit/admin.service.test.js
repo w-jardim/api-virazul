@@ -1,11 +1,13 @@
 jest.mock('../../src/modules/admin/admin.repository', () => ({
   findById: jest.fn(),
   updateSubscription: jest.fn(),
+  updatePaymentStatus: jest.fn(),
 }));
 
 jest.mock('../../src/modules/subscriptions/subscriptions.repository', () => ({
   findCurrentByUserId: jest.fn(),
   updateSubscriptionCycle: jest.fn(),
+  updateLatestStatusByUserId: jest.fn(),
   createSubscription: jest.fn(),
   syncLegacyUserFields: jest.fn(),
 }));
@@ -79,6 +81,76 @@ describe('admin service', () => {
       subscription: 'plan_free',
       paymentStatus: null,
       paymentDueDate: null,
+    });
+  });
+
+  test('changePaymentStatus sincroniza plan_pro para subscriptions.status active', async () => {
+    adminRepository.findById
+      .mockResolvedValueOnce({ id: 12, subscription: 'plan_pro', role: 'POLICE', payment_due_date: '2026-06-10' });
+    adminRepository.updatePaymentStatus.mockResolvedValue({
+      id: 12,
+      subscription: 'plan_pro',
+      payment_status: 'paid',
+    });
+    subscriptionsRepository.findCurrentByUserId.mockResolvedValue({
+      id: 55,
+      plan: 'plan_pro',
+      status: 'past_due',
+    });
+
+    const result = await adminService.changePaymentStatus(12, 'paid');
+
+    expect(subscriptionsRepository.updateLatestStatusByUserId).toHaveBeenCalledWith(12, 'active');
+    expect(adminRepository.updatePaymentStatus).toHaveBeenCalledWith(12, 'paid');
+    expect(result).toMatchObject({
+      id: 12,
+      subscription: 'plan_pro',
+      payment_status: 'paid',
+    });
+  });
+
+  test('changePaymentStatus cria assinatura canonica quando starter nao possui linha em subscriptions', async () => {
+    adminRepository.findById
+      .mockResolvedValueOnce({ id: 13, subscription: 'plan_starter', role: 'POLICE', payment_due_date: '2026-06-15' });
+    adminRepository.updatePaymentStatus.mockResolvedValue({
+      id: 13,
+      subscription: 'plan_starter',
+      payment_status: 'overdue',
+    });
+    subscriptionsRepository.findCurrentByUserId.mockResolvedValue(null);
+
+    await adminService.changePaymentStatus(13, 'overdue');
+
+    expect(subscriptionsRepository.createSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 13,
+        plan: 'plan_starter',
+        status: 'past_due',
+        currentPeriodEnd: '2026-06-15',
+      })
+    );
+    expect(adminRepository.updatePaymentStatus).toHaveBeenCalledWith(13, 'overdue');
+  });
+
+  test('changePaymentStatus limpa snapshot legado para plano isento sem forcar subscriptions', async () => {
+    adminRepository.findById
+      .mockResolvedValueOnce({ id: 14, subscription: 'plan_partner', role: 'POLICE' });
+    adminRepository.updatePaymentStatus.mockResolvedValue({
+      id: 14,
+      subscription: 'plan_partner',
+      payment_status: null,
+      payment_due_date: null,
+    });
+
+    const result = await adminService.changePaymentStatus(14, 'pending');
+
+    expect(subscriptionsRepository.findCurrentByUserId).not.toHaveBeenCalled();
+    expect(subscriptionsRepository.updateLatestStatusByUserId).not.toHaveBeenCalled();
+    expect(adminRepository.updatePaymentStatus).toHaveBeenCalledWith(14, null);
+    expect(result).toMatchObject({
+      id: 14,
+      subscription: 'plan_partner',
+      payment_status: null,
     });
   });
 });

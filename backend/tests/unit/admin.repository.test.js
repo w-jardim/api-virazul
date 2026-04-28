@@ -57,4 +57,46 @@ describe('admin repository', () => {
       plan_partner: 0,
     });
   });
+
+  test('updatePaymentStatus limpa snapshot legado para plano isento', async () => {
+    pool.query
+      .mockResolvedValueOnce([[{ id: 8, subscription: 'plan_partner', role: 'POLICE', payment_status: 'pending', payment_due_date: '2026-06-20' }]])
+      .mockResolvedValueOnce([{ affectedRows: 1 }])
+      .mockResolvedValueOnce([[{ id: 8, subscription: 'plan_partner', role: 'POLICE', payment_status: null, payment_due_date: null }]]);
+
+    const result = await adminRepository.updatePaymentStatus(8, 'paid');
+
+    expect(pool.query).toHaveBeenNthCalledWith(
+      2,
+      'UPDATE users SET payment_status = NULL, payment_due_date = NULL WHERE id = ? AND deleted_at IS NULL',
+      [8]
+    );
+    expect(result).toMatchObject({
+      id: 8,
+      subscription: 'plan_partner',
+      payment_status: null,
+      payment_due_date: null,
+    });
+  });
+
+  test('updatePaymentStatus atualiza apenas o snapshot legado para plano cobrado', async () => {
+    pool.query
+      .mockResolvedValueOnce([[{ id: 9, subscription: 'plan_pro', role: 'POLICE', payment_status: 'pending', payment_due_date: '2026-06-20' }]])
+      .mockResolvedValueOnce([{ affectedRows: 1 }])
+      .mockResolvedValueOnce([[{ id: 9, subscription: 'plan_pro', role: 'POLICE', payment_status: 'paid', payment_due_date: '2026-06-20' }]]);
+
+    const result = await adminRepository.updatePaymentStatus(9, 'paid');
+
+    expect(pool.query).toHaveBeenNthCalledWith(
+      2,
+      'UPDATE users SET payment_status = ? WHERE id = ? AND deleted_at IS NULL',
+      ['paid', 9]
+    );
+    expect(result).toMatchObject({
+      id: 9,
+      subscription: 'plan_pro',
+      payment_status: 'paid',
+      payment_due_date: '2026-06-20',
+    });
+  });
 });

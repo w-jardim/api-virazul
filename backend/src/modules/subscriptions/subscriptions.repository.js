@@ -99,6 +99,16 @@ async function updateSubscriptionStatus(id, status) {
   );
 }
 
+async function updateLatestStatusByUserId(userId, status) {
+  const current = await findCurrentByUserId(userId);
+  if (!current) {
+    return null;
+  }
+
+  await updateSubscriptionStatus(current.id, status);
+  return findById(current.id);
+}
+
 async function updateSubscriptionCycle(
   id,
   { status, plan, currentPeriodStart, currentPeriodEnd, expiresAt, trialEndsAt, partnerExpiresAt, canceledAt }
@@ -195,6 +205,7 @@ module.exports = {
   createTrialSubscription,
   createSubscription,
   updateSubscriptionStatus,
+  updateLatestStatusByUserId,
   updateSubscriptionCycle,
   attachGatewayData,
   cancelSubscription,
