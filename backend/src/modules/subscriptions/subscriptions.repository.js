@@ -1,4 +1,22 @@
 const { pool } = require('../../config/db');
+const { normalizePlanCode } = require('../../utils/plan-access');
+
+function normalizeSubscriptionRecord(record) {
+  if (!record) {
+    return record;
+  }
+
+  const rawPlan = record.raw_plan || record.plan || null;
+  const normalizedPlan = normalizePlanCode(rawPlan, { fallback: null });
+
+  return {
+    ...record,
+    raw_plan: rawPlan,
+    plan: normalizedPlan || rawPlan,
+    plan_code: normalizePlanCode(record.plan_code || rawPlan, { fallback: null }) || record.plan_code || rawPlan,
+    is_legacy_plan: Boolean(rawPlan) && normalizedPlan !== null && rawPlan !== normalizedPlan,
+  };
+}
 
 async function findLatestByUserId(userId) {
   return findCurrentByUserId(userId);
@@ -6,7 +24,7 @@ async function findLatestByUserId(userId) {
 
 async function findCurrentByUserId(userId) {
   const [rows] = await pool.query(
-    `SELECT s.*, p.code AS plan_code, p.name AS plan_name, p.price_cents, p.billing_cycle
+    `SELECT s.*, s.plan AS raw_plan, p.code AS plan_code, p.name AS plan_name, p.price_cents, p.billing_cycle
        FROM subscriptions s
        LEFT JOIN plans p ON p.code = s.plan
       WHERE s.owner_user_id = ?
@@ -14,7 +32,7 @@ async function findCurrentByUserId(userId) {
       LIMIT 1`,
     [userId]
   );
-  return rows[0] || null;
+  return normalizeSubscriptionRecord(rows[0] || null);
 }
 
 async function findById(id) {
@@ -22,7 +40,7 @@ async function findById(id) {
     'SELECT * FROM subscriptions WHERE id = ? LIMIT 1',
     [id]
   );
-  return rows[0] || null;
+  return normalizeSubscriptionRecord(rows[0] || null);
 }
 
 async function findByGatewaySubscriptionId(gateway, gatewaySubscriptionId) {
@@ -30,7 +48,7 @@ async function findByGatewaySubscriptionId(gateway, gatewaySubscriptionId) {
     'SELECT * FROM subscriptions WHERE gateway = ? AND gateway_subscription_id = ? LIMIT 1',
     [gateway, gatewaySubscriptionId]
   );
-  return rows[0] || null;
+  return normalizeSubscriptionRecord(rows[0] || null);
 }
 
 async function createTrialSubscription(userId, trialDays) {
@@ -46,12 +64,13 @@ async function createTrialSubscription(userId, trialDays) {
 }
 
 async function createSubscription({ userId, plan, status, trialEndsAt, currentPeriodStart, currentPeriodEnd }) {
+  const normalizedPlan = normalizePlanCode(plan, { fallback: 'plan_free' });
   const now = new Date();
   const [result] = await pool.query(
     `INSERT INTO subscriptions
        (owner_user_id, plan, status, started_at, trial_ends_at, current_period_start, current_period_end)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [userId, plan, status, now, trialEndsAt || null, currentPeriodStart || null, currentPeriodEnd || null]
+    [userId, normalizedPlan, status, now, trialEndsAt || null, currentPeriodStart || null, currentPeriodEnd || null]
   );
   return result.insertId;
 }
@@ -64,12 +83,13 @@ async function updateSubscriptionStatus(id, status) {
 }
 
 async function updateSubscriptionCycle(id, { status, plan, currentPeriodStart, currentPeriodEnd, expiresAt }) {
+  const normalizedPlan = normalizePlanCode(plan, { fallback: 'plan_free' });
   await pool.query(
     `UPDATE subscriptions
         SET status = ?, plan = ?, current_period_start = ?, current_period_end = ?,
             expires_at = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
-    [status, plan, currentPeriodStart, currentPeriodEnd, expiresAt || currentPeriodEnd, id]
+    [status, normalizedPlan, currentPeriodStart, currentPeriodEnd, expiresAt || currentPeriodEnd, id]
   );
 }
 
@@ -123,7 +143,11 @@ async function syncLegacyUserFields(userId, fields) {
     const dbKey = mapping[key];
     if (dbKey) {
       updates.push(`${dbKey} = ?`);
-      values.push(fields[key]);
+      if (dbKey === 'subscription') {
+        values.push(normalizePlanCode(fields[key], { fallback: 'plan_free' }));
+      } else {
+        values.push(fields[key]);
+      }
     }
   }
 
@@ -146,4 +170,5 @@ module.exports = {
   cancelSubscription,
   setPartnerPlan,
   syncLegacyUserFields,
+  normalizeSubscriptionRecord,
 };

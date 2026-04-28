@@ -37,7 +37,7 @@ describe('Admin Integration', () => {
         email: 'policial.teste@viraazul.local',
         role: 'POLICE',
         status: 'active',
-        subscription: 'free',
+        subscription: 'plan_free',
         payment_status: 'pending',
         payment_due_date: '2026-06-15',
         rank_group: 'CABO_SOLDADO',
@@ -93,9 +93,10 @@ describe('Admin Integration', () => {
       active_users: 4,
       inactive_users: 1,
       suspended_users: 0,
-      free: 1,
-      trial: 2,
-      premium: 2,
+      plan_free: 1,
+      plan_starter: 2,
+      plan_pro: 2,
+      plan_partner: 0,
     });
 
     const response = await request(app)
@@ -103,6 +104,6 @@ describe('Admin Integration', () => {
       .set('Authorization', adminAuth())
       .expect(200);
 
-    expect(response.body.data).toMatchObject({ total_users: 5, premium: 2 });
+    expect(response.body.data).toMatchObject({ total_users: 5, plan_pro: 2 });
   });
 });

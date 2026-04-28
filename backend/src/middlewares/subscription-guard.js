@@ -2,12 +2,14 @@ const env = require('../config/env');
 const AppError = require('../utils/app-error');
 const subscriptionsRepository = require('../modules/subscriptions/subscriptions.repository');
 const logger = require('../utils/logger');
+const { isBlockedSubscriptionStatus } = require('../utils/plan-access');
 
 function isBlockedStatus(status) {
   if (!status) {
     return false;
   }
-  return env.subscription.blockedStatuses.includes(String(status).toLowerCase());
+  return env.subscription.blockedStatuses.includes(String(status).toLowerCase())
+    || isBlockedSubscriptionStatus(status);
 }
 
 async function enforceSubscription(req, res, next) {

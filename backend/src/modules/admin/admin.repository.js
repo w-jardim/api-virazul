@@ -1,10 +1,13 @@
 const bcrypt = require('bcrypt');
 const { pool } = require('../../config/db');
+const { normalizePlanCode } = require('../../utils/plan-access');
 
 const USER_FIELDS = `id, name, email, role, status, subscription, payment_status, payment_due_date, rank_group, created_at, updated_at, last_login_at`;
 
 function normalizeBilling(user) {
   if (!user) return user;
+
+  user.subscription = normalizePlanCode(user.subscription, { fallback: 'plan_free' });
 
   if (['plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
     user.payment_status = null;
@@ -38,11 +41,12 @@ async function findById(id) {
 
 async function create(user) {
   const passwordHash = await bcrypt.hash(user.password, 10);
+  const normalizedSubscription = normalizePlanCode(user.subscription, { fallback: 'plan_free' });
 
   let paymentStatus = user.payment_status || 'pending';
   let paymentDueDate = user.payment_due_date || null;
 
-  if (['plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
+  if (['plan_free', 'plan_partner'].includes(normalizedSubscription) || user.role === 'ADMIN_MASTER') {
     paymentStatus = 'pending';
     paymentDueDate = null;
   }
@@ -56,7 +60,7 @@ async function create(user) {
       passwordHash,
       user.role,
       user.status,
-      user.subscription,
+      normalizedSubscription,
       paymentStatus,
       paymentDueDate,
       user.rank_group || null,
@@ -69,6 +73,10 @@ async function create(user) {
 async function updateById(id, payload) {
   const fields = [];
   const values = [];
+  const normalizedSubscription =
+    payload.subscription !== undefined
+      ? normalizePlanCode(payload.subscription, { fallback: 'plan_free' })
+      : undefined;
 
   if (payload.name !== undefined) { fields.push('name = ?'); values.push(payload.name); }
   if (payload.email !== undefined) { fields.push('email = ?'); values.push(payload.email); }
@@ -79,9 +87,9 @@ async function updateById(id, payload) {
   }
   if (payload.role !== undefined) { fields.push('role = ?'); values.push(payload.role); }
   if (payload.status !== undefined) { fields.push('status = ?'); values.push(payload.status); }
-  if (payload.subscription !== undefined) { fields.push('subscription = ?'); values.push(payload.subscription); }
+  if (normalizedSubscription !== undefined) { fields.push('subscription = ?'); values.push(normalizedSubscription); }
 
-  if (payload.subscription !== 'plan_free' && payload.subscription !== 'plan_partner') {
+  if (normalizedSubscription !== 'plan_free' && normalizedSubscription !== 'plan_partner') {
     if (payload.payment_status !== undefined) { fields.push('payment_status = ?'); values.push(payload.payment_status); }
     if (payload.payment_due_date !== undefined) { fields.push('payment_due_date = ?'); values.push(payload.payment_due_date || null); }
   }
@@ -107,15 +115,16 @@ async function deleteById(id) {
 }
 
 async function updateSubscription(id, subscription) {
-  if (subscription === 'plan_free' || subscription === 'plan_partner') {
+  const normalizedSubscription = normalizePlanCode(subscription, { fallback: 'plan_free' });
+  if (normalizedSubscription === 'plan_free' || normalizedSubscription === 'plan_partner') {
     await pool.query(
       'UPDATE users SET subscription = ? WHERE id = ? AND deleted_at IS NULL',
-      [subscription, id]
+      [normalizedSubscription, id]
     );
   } else {
     await pool.query(
       'UPDATE users SET subscription = ?, payment_status = IFNULL(payment_status, \'pending\') WHERE id = ? AND deleted_at IS NULL',
-      [subscription, id]
+      [normalizedSubscription, id]
     );
   }
   return findById(id);

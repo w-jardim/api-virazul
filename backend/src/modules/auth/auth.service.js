@@ -1,6 +1,7 @@
 const AppError = require('../../utils/app-error');
 const passwordUtils = require('../../utils/password');
 const jwtUtils = require('../../utils/jwt');
+const { normalizePlanCode } = require('../../utils/plan-access');
 const authRepository = require('./auth.repository');
 const googleTokenService = require('./google-token.service');
 const logger = require('../../utils/logger');
@@ -20,7 +21,7 @@ function buildSession(user) {
       email: user.email,
       role: user.role,
       rank_group: user.rank_group || null,
-      subscription: user.subscription || 'plan_free',
+      subscription: normalizePlanCode(user.subscription, { fallback: 'plan_free' }),
       payment_due_date: user.payment_due_date || null,
       created_at: user.created_at,
     },

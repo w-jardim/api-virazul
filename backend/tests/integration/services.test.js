@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 jest.mock('../../src/modules/services/services.repository', () => ({
   findServiceTypeById: jest.fn(),
   getUserPreferenceRuleB: jest.fn(),
+  getUserPlanningPreferences: jest.fn(),
   createService: jest.fn(),
   list: jest.fn(),
   getDateRange: jest.fn(),
@@ -21,10 +22,61 @@ jest.mock('../../src/modules/services/services.repository', () => ({
   findActiveFinancialRule: jest.fn(),
 }));
 
+jest.mock('../../src/modules/subscriptions/subscriptions.repository', () => ({
+  findLatestByUserId: jest.fn(async () => null),
+  findCurrentByUserId: jest.fn(async () => ({
+    id: 1,
+    plan: 'plan_pro',
+    raw_plan: 'plan_pro',
+    status: 'active',
+    current_period_end: '2099-01-01T00:00:00.000Z',
+    trial_ends_at: null,
+    partner_expires_at: null,
+  })),
+  updateSubscriptionStatus: jest.fn(),
+  syncLegacyUserFields: jest.fn(),
+}));
+
+jest.mock('../../src/config/db', () => ({
+  pool: {
+    query: jest.fn(async (sql) => {
+      if (sql.includes('SELECT status, subscription, payment_status, payment_due_date FROM users')) {
+        return [[{
+          status: 'active',
+          subscription: 'plan_pro',
+          payment_status: 'paid',
+          payment_due_date: null,
+        }]];
+      }
+
+      if (sql.includes('SELECT services_created FROM usage_metrics')) {
+        return [[{ services_created: 0 }]];
+      }
+
+      if (sql.includes('INSERT INTO usage_metrics')) {
+        return [{ affectedRows: 1 }];
+      }
+
+      return [[]];
+    }),
+  },
+}));
+
+jest.mock('../../src/services/usageService', () => ({
+  incrementUsage: jest.fn(async () => undefined),
+}));
+
 jest.mock('../../src/modules/pricing/pricing.repository', () => ({
   findUserRankGroup: jest.fn(async () => null),
   VALID_RANK_GROUPS: ['OFICIAIS_SUPERIORES', 'CAPITAO_TENENTE', 'SUBTENENTE_SARGENTO', 'CABO_SOLDADO'],
   VALID_SERVICE_SCOPES: ['RAS', 'PROEIS', 'SEGURANCA_PRESENTE', 'OUTROS'],
+}));
+
+jest.mock('../../src/modules/planning/planning.repository', () => ({
+  getMonthlyHours: jest.fn(async () => ({
+    confirmed_hours: 0,
+    waiting_hours: 0,
+  })),
 }));
 
 const repository = require('../../src/modules/services/services.repository');
@@ -44,7 +96,7 @@ function makeBaseService(overrides = {}) {
     start_at: '2026-04-10T08:00:00.000Z',
     duration_hours: 12,
     operational_status: 'RESERVA',
-    financial_status: 'PREVISTO',
+    financial_status: 'PENDENTE',
     amount_base: 100,
     amount_paid: 0,
     amount_balance: 100,
@@ -64,6 +116,8 @@ describe('Services Integration', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     repository.findOverlaps.mockResolvedValue([]);
+    repository.list.mockResolvedValue([]);
+    repository.getUserPlanningPreferences.mockResolvedValue(null);
   });
 
   test('criar servico valido', async () => {
@@ -88,7 +142,7 @@ describe('Services Integration', () => {
         start_at: '2026-04-10T08:00:00.000Z',
         duration_hours: 12,
         operational_status: 'TITULAR',
-        financial_status: 'PREVISTO',
+        financial_status: 'PENDENTE',
         amount_base: 120,
       });
 
@@ -130,7 +184,7 @@ describe('Services Integration', () => {
         start_at: '2026-04-10T08:00:00.000Z',
         duration_hours: 12,
         operational_status: 'RESERVA',
-        financial_status: 'PREVISTO',
+        financial_status: 'PENDENTE',
         amount_base: 120,
       });
 
@@ -153,7 +207,7 @@ describe('Services Integration', () => {
         start_at: '2026-04-10T08:00:00.000Z',
         duration_hours: 12,
         operational_status: 'TITULAR',
-        financial_status: 'PREVISTO',
+        financial_status: 'PENDENTE',
         amount_base: 100,
         amount_discount: 500,
       });
@@ -177,7 +231,7 @@ describe('Services Integration', () => {
         start_at: '2026-04-10T08:00:00.000Z',
         duration_hours: 12,
         operational_status: 'TITULAR',
-        financial_status: 'PREVISTO',
+        financial_status: 'PENDENTE',
         amount_base: 100,
         amount_paid: 500,
       });
@@ -282,7 +336,7 @@ describe('Services Integration', () => {
 
     repository.findById
       .mockResolvedValueOnce(state.service)
-      .mockResolvedValueOnce({ ...state.service, operational_status: 'REALIZADO', financial_status: 'PREVISTO' });
+      .mockResolvedValueOnce({ ...state.service, operational_status: 'REALIZADO', financial_status: 'PENDENTE' });
 
     repository.getUserPreferenceRuleB.mockResolvedValue(false);
     repository.getConnection.mockResolvedValue(connection);
@@ -319,7 +373,7 @@ describe('Services Integration', () => {
 
     repository.findById
       .mockResolvedValueOnce(state.service)
-      .mockResolvedValueOnce({ ...state.service, operational_status: 'REALIZADO', financial_status: 'PAGO', amount_paid: 100, amount_balance: 0 });
+      .mockResolvedValueOnce({ ...state.service, operational_status: 'REALIZADO', financial_status: 'RECEBIDO', amount_paid: 100, amount_balance: 0 });
 
     repository.getUserPreferenceRuleB.mockResolvedValue(true);
     repository.getConnection.mockResolvedValue(connection);
@@ -336,7 +390,7 @@ describe('Services Integration', () => {
       });
 
     expect(response.status).toBe(200);
-    expect(response.body.data.financial_status).toBe('PAGO');
+    expect(response.body.data.financial_status).toBe('RECEBIDO');
   });
 
   test('aplicar Regra B desativada', async () => {
@@ -350,7 +404,7 @@ describe('Services Integration', () => {
 
     repository.findById
       .mockResolvedValueOnce(state.service)
-      .mockResolvedValueOnce({ ...state.service, operational_status: 'REALIZADO', financial_status: 'PREVISTO' });
+      .mockResolvedValueOnce({ ...state.service, operational_status: 'REALIZADO', financial_status: 'PENDENTE' });
 
     repository.getUserPreferenceRuleB.mockResolvedValue(false);
     repository.getConnection.mockResolvedValue(connection);
@@ -367,7 +421,7 @@ describe('Services Integration', () => {
       });
 
     expect(response.status).toBe(200);
-    expect(response.body.data.financial_status).toBe('PREVISTO');
+    expect(response.body.data.financial_status).toBe('PENDENTE');
   });
 
   test('soft delete funcionar', async () => {
@@ -428,7 +482,7 @@ describe('Services Integration', () => {
       .mockResolvedValueOnce(state.service)
       .mockResolvedValueOnce({
         ...state.service,
-        financial_status: 'PAGO',
+        financial_status: 'RECEBIDO',
         amount_paid: 100,
         amount_balance: 0,
       });
@@ -443,7 +497,7 @@ describe('Services Integration', () => {
       .send({});
 
     expect(response.status).toBe(200);
-    expect(response.body.data.financial_status).toBe('PAGO');
+    expect(response.body.data.financial_status).toBe('RECEBIDO');
     expect(repository.createStatusHistory).toHaveBeenCalledWith(
       connection,
       expect.objectContaining({ transition_type: 'CONFIRMAR_PAGAMENTO' })

@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { pool } = require('../../config/db');
 const passwordUtils = require('../../utils/password');
+const { normalizePlanCode } = require('../../utils/plan-access');
 
 const AUTH_USER_FIELDS = `
   id,
@@ -15,6 +16,17 @@ const AUTH_USER_FIELDS = `
   created_at
 `;
 
+function normalizeAuthUser(user) {
+  if (!user) {
+    return user;
+  }
+
+  return {
+    ...user,
+    subscription: normalizePlanCode(user.subscription, { fallback: 'plan_free' }),
+  };
+}
+
 async function findByEmail(email) {
   const [rows] = await pool.query(
     `SELECT ${AUTH_USER_FIELDS}
@@ -25,7 +37,7 @@ async function findByEmail(email) {
     [email]
   );
 
-  return rows[0] || null;
+  return normalizeAuthUser(rows[0] || null);
 }
 
 async function findByGoogleSub(googleSub) {
@@ -38,7 +50,7 @@ async function findByGoogleSub(googleSub) {
     [googleSub]
   );
 
-  return rows[0] || null;
+  return normalizeAuthUser(rows[0] || null);
 }
 
 async function findSafeById(id) {
@@ -51,7 +63,7 @@ async function findSafeById(id) {
     [id]
   );
 
-  return rows[0] || null;
+  return normalizeAuthUser(rows[0] || null);
 }
 
 async function updateLastLogin(userId) {
@@ -119,7 +131,7 @@ async function createGoogleUser({ name, email, googleSub }) {
     [result.insertId]
   );
 
-  return rows[0] || null;
+  return normalizeAuthUser(rows[0] || null);
 }
 
 module.exports = {
