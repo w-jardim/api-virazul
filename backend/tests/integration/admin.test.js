@@ -38,8 +38,8 @@ describe('Admin Integration', () => {
         role: 'POLICE',
         status: 'active',
         subscription: 'plan_free',
-        payment_status: 'pending',
-        payment_due_date: '2026-06-15',
+        payment_status: null,
+        payment_due_date: null,
         rank_group: 'CABO_SOLDADO',
         created_at: '2026-03-01T00:00:00.000Z',
       },
@@ -55,7 +55,7 @@ describe('Admin Integration', () => {
     expect(response.body.data[0]).toMatchObject({
       id: 10,
       email: 'policial.teste@viraazul.local',
-      payment_status: 'pending',
+      payment_status: null,
     });
   });
 

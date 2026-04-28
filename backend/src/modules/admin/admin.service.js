@@ -1,5 +1,6 @@
 const AppError = require('../../utils/app-error');
 const logger = require('../../utils/logger');
+const { normalizePlanCode } = require('../../utils/plan-access');
 const adminRepository = require('./admin.repository');
 
 async function getStats() {
@@ -44,30 +45,39 @@ async function changeSubscription(id, subscription) {
     throw new AppError('USER_NOT_FOUND', 'Usuario nao encontrado.', 404);
   }
 
-  const updated = await adminRepository.updateSubscription(id, subscription);
+  const planCode = normalizePlanCode(subscription, { fallback: null });
+  if (!planCode) {
+    throw new AppError('INVALID_PLAN', 'Plano invalido ou nao suportado.', 400);
+  }
+
+  await adminRepository.updateSubscription(id, planCode);
 
   // Sync subscriptions table (source of truth)
   const subscriptionsRepo = require('../subscriptions/subscriptions.repository');
   const sub = await subscriptionsRepo.findCurrentByUserId(id);
+  const now = new Date();
 
-  if (subscription === 'plan_starter' || subscription === 'plan_pro') {
-    const planCode = subscription;
-    const now = new Date();
+  if (planCode === 'plan_starter' || planCode === 'plan_pro') {
     const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     if (sub) {
       await subscriptionsRepo.updateSubscriptionCycle(sub.id, {
         status: 'active',
         plan: planCode,
+        trialEndsAt: null,
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd,
+        partnerExpiresAt: null,
+        canceledAt: null,
       });
     } else {
       await subscriptionsRepo.createSubscription({
         userId: id,
         plan: planCode,
         status: 'active',
+        trialEndsAt: null,
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd,
+        partnerExpiresAt: null,
       });
     }
     await subscriptionsRepo.syncLegacyUserFields(id, {
@@ -75,20 +85,41 @@ async function changeSubscription(id, subscription) {
       paymentStatus: 'paid',
       paymentDueDate: periodEnd.toISOString().slice(0, 10),
     });
-  } else if (subscription === 'plan_free' || subscription === 'plan_partner') {
-    if (sub && !['canceled', 'expired'].includes(sub.status)) {
-      await subscriptionsRepo.cancelSubscription(sub.id);
+  } else if (planCode === 'plan_free' || planCode === 'plan_partner') {
+    const partnerExpiresAt = planCode === 'plan_partner' ? sub?.partner_expires_at || null : null;
+
+    if (sub) {
+      await subscriptionsRepo.updateSubscriptionCycle(sub.id, {
+        status: 'active',
+        plan: planCode,
+        trialEndsAt: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        expiresAt: null,
+        partnerExpiresAt,
+        canceledAt: null,
+      });
+    } else {
+      await subscriptionsRepo.createSubscription({
+        userId: id,
+        plan: planCode,
+        status: 'active',
+        trialEndsAt: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        partnerExpiresAt,
+      });
     }
-    const planCode = subscription;
+
     await subscriptionsRepo.syncLegacyUserFields(id, {
       subscription: planCode,
-      paymentStatus: 'pending',
+      paymentStatus: null,
       paymentDueDate: null,
     });
   }
 
-  logger.info('admin.subscription.changed', { user_id: id, subscription });
-  return updated;
+  logger.info('admin.subscription.changed', { user_id: id, subscription: planCode });
+  return adminRepository.findById(id);
 }
 
 async function changePaymentStatus(id, paymentStatus) {

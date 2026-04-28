@@ -1,6 +1,6 @@
 const bcrypt = require('bcrypt');
 const { pool } = require('../../config/db');
-const { normalizePlanCode } = require('../../utils/plan-access');
+const { normalizePlanCode, resolveEffectivePlan } = require('../../utils/plan-access');
 
 const USER_FIELDS = `id, name, email, role, status, subscription, payment_status, payment_due_date, rank_group, created_at, updated_at, last_login_at`;
 
@@ -47,7 +47,7 @@ async function create(user) {
   let paymentDueDate = user.payment_due_date || null;
 
   if (['plan_free', 'plan_partner'].includes(normalizedSubscription) || user.role === 'ADMIN_MASTER') {
-    paymentStatus = 'pending';
+    paymentStatus = null;
     paymentDueDate = null;
   }
 
@@ -71,12 +71,20 @@ async function create(user) {
 }
 
 async function updateById(id, payload) {
+  const currentUser = await findById(id);
+  if (!currentUser) {
+    return null;
+  }
+
   const fields = [];
   const values = [];
   const normalizedSubscription =
     payload.subscription !== undefined
       ? normalizePlanCode(payload.subscription, { fallback: 'plan_free' })
       : undefined;
+  const targetSubscription = normalizedSubscription !== undefined ? normalizedSubscription : currentUser.subscription;
+  const targetRole = payload.role !== undefined ? payload.role : currentUser.role;
+  const isPaymentExempt = ['plan_free', 'plan_partner'].includes(targetSubscription) || targetRole === 'ADMIN_MASTER';
 
   if (payload.name !== undefined) { fields.push('name = ?'); values.push(payload.name); }
   if (payload.email !== undefined) { fields.push('email = ?'); values.push(payload.email); }
@@ -89,7 +97,12 @@ async function updateById(id, payload) {
   if (payload.status !== undefined) { fields.push('status = ?'); values.push(payload.status); }
   if (normalizedSubscription !== undefined) { fields.push('subscription = ?'); values.push(normalizedSubscription); }
 
-  if (normalizedSubscription !== 'plan_free' && normalizedSubscription !== 'plan_partner') {
+  if (isPaymentExempt) {
+    fields.push('payment_status = ?');
+    values.push(null);
+    fields.push('payment_due_date = ?');
+    values.push(null);
+  } else {
     if (payload.payment_status !== undefined) { fields.push('payment_status = ?'); values.push(payload.payment_status); }
     if (payload.payment_due_date !== undefined) { fields.push('payment_due_date = ?'); values.push(payload.payment_due_date || null); }
   }
@@ -118,7 +131,7 @@ async function updateSubscription(id, subscription) {
   const normalizedSubscription = normalizePlanCode(subscription, { fallback: 'plan_free' });
   if (normalizedSubscription === 'plan_free' || normalizedSubscription === 'plan_partner') {
     await pool.query(
-      'UPDATE users SET subscription = ? WHERE id = ? AND deleted_at IS NULL',
+      'UPDATE users SET subscription = ?, payment_status = NULL, payment_due_date = NULL WHERE id = ? AND deleted_at IS NULL',
       [normalizedSubscription, id]
     );
   } else {
@@ -153,38 +166,51 @@ async function getStats() {
     WHERE deleted_at IS NULL`
   );
 
-  // Subscription stats from the authoritative subscriptions table
-  const [[subRow]] = await pool.query(
+  const [planRows] = await pool.query(
     `SELECT
-      COALESCE(SUM(s.status = 'active' AND s.plan = 'plan_free'), 0) AS plan_free,
-      COALESCE(SUM(s.status = 'active' AND s.plan = 'plan_starter'), 0) AS plan_starter,
-      COALESCE(SUM(s.status = 'active' AND s.plan = 'plan_pro'), 0) AS plan_pro,
-      COALESCE(SUM(s.status = 'active' AND s.plan = 'plan_partner'), 0) AS plan_partner
-     FROM subscriptions s
-     INNER JOIN (
-       SELECT owner_user_id, MAX(id) AS max_id
-       FROM subscriptions
-       GROUP BY owner_user_id
-     ) latest ON latest.max_id = s.id
-     INNER JOIN users u ON u.id = s.owner_user_id
+      u.id,
+      u.subscription AS user_subscription,
+      latest.plan AS subscription_plan,
+      latest.partner_expires_at
+     FROM users u
+     LEFT JOIN (
+       SELECT s.owner_user_id, s.plan, s.partner_expires_at
+       FROM subscriptions s
+       INNER JOIN (
+         SELECT owner_user_id, MAX(id) AS max_id
+         FROM subscriptions
+         GROUP BY owner_user_id
+       ) last_sub ON last_sub.max_id = s.id
+     ) latest ON latest.owner_user_id = u.id
      WHERE u.deleted_at IS NULL`
   );
 
-  const total = Number(userRow.total_users) || 0;
-  const planFree = Number(subRow.plan_free) || 0;
-  const planStarter = Number(subRow.plan_starter) || 0;
-  const planPro = Number(subRow.plan_pro) || 0;
-  const planPartner = Number(subRow.plan_partner) || 0;
+  const planCounts = {
+    plan_free: 0,
+    plan_starter: 0,
+    plan_pro: 0,
+    plan_partner: 0,
+  };
+
+  for (const row of planRows) {
+    const effectivePlan = resolveEffectivePlan({
+      rawPlan: row.subscription_plan || row.user_subscription || 'plan_free',
+      partnerExpiresAt: row.partner_expires_at || null,
+      fallbackPlan: 'plan_free',
+    });
+    const normalizedPlan = normalizePlanCode(effectivePlan, { fallback: 'plan_free' });
+    planCounts[normalizedPlan] += 1;
+  }
 
   return {
-    total_users: total,
+    total_users: Number(userRow.total_users) || 0,
     active_users: Number(userRow.active_users) || 0,
     inactive_users: Number(userRow.inactive_users) || 0,
     suspended_users: Number(userRow.suspended_users) || 0,
-    plan_free: planFree,
-    plan_starter: planStarter,
-    plan_pro: planPro,
-    plan_partner: Math.max(0, planPartner + (total - planFree - planStarter - planPro - planPartner)),
+    plan_free: planCounts.plan_free,
+    plan_starter: planCounts.plan_starter,
+    plan_pro: planCounts.plan_pro,
+    plan_partner: planCounts.plan_partner,
   };
 }
 

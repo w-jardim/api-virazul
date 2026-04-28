@@ -63,14 +63,31 @@ async function createTrialSubscription(userId, trialDays) {
   return result.insertId;
 }
 
-async function createSubscription({ userId, plan, status, trialEndsAt, currentPeriodStart, currentPeriodEnd }) {
+async function createSubscription({
+  userId,
+  plan,
+  status,
+  trialEndsAt,
+  currentPeriodStart,
+  currentPeriodEnd,
+  partnerExpiresAt,
+}) {
   const normalizedPlan = normalizePlanCode(plan, { fallback: 'plan_free' });
   const now = new Date();
   const [result] = await pool.query(
     `INSERT INTO subscriptions
-       (owner_user_id, plan, status, started_at, trial_ends_at, current_period_start, current_period_end)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [userId, normalizedPlan, status, now, trialEndsAt || null, currentPeriodStart || null, currentPeriodEnd || null]
+       (owner_user_id, plan, status, started_at, trial_ends_at, current_period_start, current_period_end, partner_expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      userId,
+      normalizedPlan,
+      status,
+      now,
+      trialEndsAt || null,
+      currentPeriodStart || null,
+      currentPeriodEnd || null,
+      partnerExpiresAt || null,
+    ]
   );
   return result.insertId;
 }
@@ -82,14 +99,27 @@ async function updateSubscriptionStatus(id, status) {
   );
 }
 
-async function updateSubscriptionCycle(id, { status, plan, currentPeriodStart, currentPeriodEnd, expiresAt }) {
+async function updateSubscriptionCycle(
+  id,
+  { status, plan, currentPeriodStart, currentPeriodEnd, expiresAt, trialEndsAt, partnerExpiresAt, canceledAt }
+) {
   const normalizedPlan = normalizePlanCode(plan, { fallback: 'plan_free' });
   await pool.query(
     `UPDATE subscriptions
-        SET status = ?, plan = ?, current_period_start = ?, current_period_end = ?,
-            expires_at = ?, updated_at = CURRENT_TIMESTAMP
+        SET status = ?, plan = ?, trial_ends_at = ?, current_period_start = ?, current_period_end = ?,
+            expires_at = ?, partner_expires_at = ?, canceled_at = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
-    [status, normalizedPlan, currentPeriodStart, currentPeriodEnd, expiresAt || currentPeriodEnd, id]
+    [
+      status,
+      normalizedPlan,
+      trialEndsAt || null,
+      currentPeriodStart || null,
+      currentPeriodEnd || null,
+      expiresAt || currentPeriodEnd || null,
+      partnerExpiresAt || null,
+      canceledAt || null,
+      id,
+    ]
   );
 }
 
