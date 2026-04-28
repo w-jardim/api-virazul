@@ -150,6 +150,70 @@ describe('Services Integration', () => {
     expect(response.body.data).toHaveProperty('id', 999);
   });
 
+  test('criar servico retorna 201 mesmo se incrementUsage falhar apos persistir', async () => {
+    const { incrementUsage } = require('../../src/services/usageService');
+
+    repository.findServiceTypeById.mockResolvedValue({
+      id: 2,
+      key: 'ras_voluntary',
+      allows_reservation: 1,
+      counts_in_financial: 1,
+    });
+    repository.createService.mockImplementation(async (payload) => ({
+      id: 1001,
+      ...payload,
+      deleted_at: null,
+    }));
+    incrementUsage.mockRejectedValueOnce(new Error('Table usage_metrics does not exist'));
+
+    const response = await request(app)
+      .post('/api/v1/services')
+      .set('Authorization', authHeader({ id: 2, email: 'policial@viraazul.local', role: 'POLICE' }))
+      .send({
+        service_type_id: 2,
+        start_at: '2026-04-10T20:00:00.000Z',
+        duration_hours: 12,
+        operational_status: 'TITULAR',
+        financial_status: 'PENDENTE',
+        amount_base: 140,
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toHaveProperty('id', 1001);
+    expect(repository.createService).toHaveBeenCalledTimes(1);
+  });
+
+  test('criar novamente no mesmo horario retorna 409', async () => {
+    repository.findServiceTypeById.mockResolvedValue({
+      id: 2,
+      key: 'ras_voluntary',
+      allows_reservation: 1,
+      counts_in_financial: 1,
+    });
+    repository.findOverlaps.mockResolvedValue([
+      makeBaseService({
+        id: 888,
+        start_at: '2026-04-10T08:00:00.000Z',
+        duration_hours: 12,
+      }),
+    ]);
+
+    const response = await request(app)
+      .post('/api/v1/services')
+      .set('Authorization', authHeader({ id: 2, email: 'policial@viraazul.local', role: 'POLICE' }))
+      .send({
+        service_type_id: 2,
+        start_at: '2026-04-10T08:00:00.000Z',
+        duration_hours: 12,
+        operational_status: 'TITULAR',
+        financial_status: 'PENDENTE',
+        amount_base: 120,
+      });
+
+    expect(response.status).toBe(409);
+    expect(repository.createService).not.toHaveBeenCalled();
+  });
+
   test('validar params id invalido retorna 400', async () => {
     const response = await request(app)
       .get('/api/v1/services/abc')

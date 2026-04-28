@@ -97,6 +97,39 @@ describe('Admin Integration', () => {
     expect(subscriptionsRepository.updateLatestStatusByUserId).toHaveBeenCalledWith(10, 'active');
   });
 
+  test('PATCH /api/v1/admin/users/:id allows exempt plan user with null payment_status', async () => {
+    adminRepository.findById.mockResolvedValue({
+      id: 11,
+      email: 'free.user@viraazul.local',
+      subscription: 'plan_free',
+      role: 'POLICE',
+    });
+    adminRepository.updateById.mockResolvedValue({
+      id: 11,
+      subscription: 'plan_free',
+      payment_status: null,
+      payment_due_date: null,
+    });
+
+    const response = await request(app)
+      .patch('/api/v1/admin/users/11')
+      .set('Authorization', adminAuth())
+      .send({
+        subscription: 'plan_free',
+        payment_status: 'pending',
+        payment_due_date: '2026-06-10',
+      })
+      .expect(200);
+
+    expect(response.body.errors).toBeNull();
+    expect(response.body.data).toMatchObject({
+      id: 11,
+      subscription: 'plan_free',
+      payment_status: null,
+      payment_due_date: null,
+    });
+  });
+
   test('GET /api/v1/admin/stats returns aggregated counts', async () => {
     adminRepository.getStats.mockResolvedValue({
       total_users: 5,

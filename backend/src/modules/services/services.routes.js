@@ -8,6 +8,7 @@ const validator = require('./services.validator');
 const { incrementUsage } = require('../../services/usageService');
 const { PLANS } = require('../../constants/plans');
 const asyncHandler = require('../../utils/async-handler');
+const logger = require('../../utils/logger');
 
 const router = express.Router();
 
@@ -28,7 +29,15 @@ router.post(
       });
     }
     const data = await require('./services.service').create(req.user, req.body);
-    await incrementUsage(req.user.id);
+    try {
+      await incrementUsage(req.user.id);
+    } catch (error) {
+      logger.warn('services.create.usage-metric-failed', {
+        user_id: req.user.id,
+        service_id: data?.id || null,
+        error_message: error.message,
+      });
+    }
     res.status(201).json({ data, meta: null, errors: null });
   })
 );
