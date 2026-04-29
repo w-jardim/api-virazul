@@ -21,3 +21,9 @@ backend/coverage/
 backend/.nyc_output/
 backend/tmp/
 backend/temp/
+
+# Local VPS files
+.env
+*.bak
+docker-compose.yml.local-*.bak
+docker-compose.yml.bak-*
