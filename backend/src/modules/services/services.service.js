@@ -19,6 +19,35 @@ function normalizeServiceFinancialStatus(service) {
   };
 }
 
+function buildFreemiumSessionMetadata(authUser) {
+  if (!authUser || authUser.plan !== 'plan_free') {
+    return null;
+  }
+
+  if (!authUser.session_id || !authUser.session_expires_at) {
+    return null;
+  }
+
+  return {
+    temporary: true,
+    plan: 'plan_free',
+    session_id: authUser.session_id,
+    session_expires_at: authUser.session_expires_at,
+  };
+}
+
+function attachFreemiumSessionMetadata(financialSnapshot, authUser) {
+  const freemiumSession = buildFreemiumSessionMetadata(authUser);
+  if (!freemiumSession) {
+    return financialSnapshot;
+  }
+
+  return {
+    ...(financialSnapshot || {}),
+    freemium_session: freemiumSession,
+  };
+}
+
 function assertCanReadService(authUser, service) {
   if (isAdminMaster(authUser)) {
     return;
@@ -310,6 +339,7 @@ async function create(authUser, payload) {
   const operationalStatus = payload.operational_status || 'TITULAR';
   const financialStatus = rules.normalizeFinancialStatus(payload.financial_status || 'PENDENTE');
   const { amounts, financialSnapshot } = await buildAmountsAndSnapshot(serviceType, payload, null, userId);
+  const snapshotWithSession = attachFreemiumSessionMetadata(financialSnapshot, authUser);
 
   assertTypeRules(serviceType, operationalStatus, amounts);
   rules.assertFinancialCompatibilityWithOperational(operationalStatus, financialStatus);
@@ -332,7 +362,7 @@ async function create(authUser, payload) {
     amount_additional: amounts.amount_additional,
     amount_discount: amounts.amount_discount,
     amount_total: amounts.amount_total,
-    financial_snapshot: financialSnapshot,
+    financial_snapshot: snapshotWithSession,
     payment_due_date: null,
     payment_at: null,
     is_complementary: Boolean(serviceType.counts_in_financial),
@@ -461,6 +491,13 @@ async function update(authUser, id, payload) {
     existing,
     existing.user_id
   );
+  const snapshotWithSession =
+    existing?.financial_snapshot?.freemium_session
+      ? {
+          ...(financialSnapshot || {}),
+          freemium_session: existing.financial_snapshot.freemium_session,
+        }
+      : financialSnapshot;
 
   assertTypeRules(serviceType, operationalStatus, amounts);
   rules.assertFinancialCompatibilityWithOperational(operationalStatus, financialStatus);
@@ -484,7 +521,7 @@ async function update(authUser, id, payload) {
     amount_additional: amounts.amount_additional,
     amount_discount: amounts.amount_discount,
     amount_total: amounts.amount_total,
-    financial_snapshot: financialSnapshot,
+    financial_snapshot: snapshotWithSession,
     payment_due_date: null,
     is_complementary: Boolean(serviceType.counts_in_financial),
   });

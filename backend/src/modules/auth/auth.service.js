@@ -5,13 +5,22 @@ const { normalizePlanCode } = require('../../utils/plan-access');
 const authRepository = require('./auth.repository');
 const googleTokenService = require('./google-token.service');
 const logger = require('../../utils/logger');
+const subscriptionsRepo = require('../subscriptions/subscriptions.repository');
+const { randomUUID } = require('crypto');
 
-function buildSession(user) {
+function buildSession(user, sessionId = randomUUID()) {
   const token = jwtUtils.sign({
     id: user.id,
     email: user.email,
     role: user.role,
+    sid: sessionId,
   });
+
+  const decoded = jwtUtils.verify(token);
+  const sessionExpiresAt =
+    typeof decoded.exp === 'number'
+      ? new Date(decoded.exp * 1000).toISOString()
+      : null;
 
   return {
     token,
@@ -24,8 +33,24 @@ function buildSession(user) {
       subscription: normalizePlanCode(user.subscription, { fallback: 'plan_free' }),
       payment_due_date: user.payment_due_date || null,
       created_at: user.created_at,
+      session_expires_at: sessionExpiresAt,
     },
   };
+}
+
+async function cleanupFreemiumSessionData(userId, sessionId) {
+  try {
+    await subscriptionsRepo.cleanupFreemiumSessionServices(userId, {
+      currentSessionId: sessionId,
+      now: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.warn('auth.freemium.cleanup_failed', {
+      user_id: userId,
+      session_id: sessionId,
+      error_message: error.message,
+    });
+  }
 }
 
 async function login(email, password) {
@@ -49,7 +74,9 @@ async function login(email, password) {
     email: user.email,
   });
 
-  return buildSession(user);
+  const sessionId = randomUUID();
+  await cleanupFreemiumSessionData(user.id, sessionId);
+  return buildSession(user, sessionId);
 }
 
 async function loginWithGoogle(idToken) {
@@ -108,7 +135,9 @@ async function loginWithGoogle(idToken) {
   await authRepository.updateLastLogin(user.id);
   logger.info('auth.google.login.success', { user_id: user.id, email });
 
-  return buildSession(user);
+  const sessionId = randomUUID();
+  await cleanupFreemiumSessionData(user.id, sessionId);
+  return buildSession(user, sessionId);
 }
 
 async function me(userId) {

@@ -5,6 +5,7 @@ const adminRepository = require('../admin/admin.repository');
 const authRepository = require('./auth.repository');
 const jwtUtils = require('../../utils/jwt');
 const logger = require('../../utils/logger');
+const { randomUUID } = require('crypto');
 
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
@@ -30,6 +31,7 @@ const loginWithGoogle = asyncHandler(async (req, res) => {
 
 const me = asyncHandler(async (req, res) => {
   const user = await authService.me(req.user.id);
+  user.session_expires_at = req.user.session_expires_at || null;
 
   res.status(200).json({
     data: user,
@@ -75,7 +77,13 @@ async function register(req, res, next) {
       subscription: 'plan_free',
     });
 
-    const token = jwtUtils.sign({ id: created.id, email: created.email, role: created.role });
+    const sessionId = randomUUID();
+    const token = jwtUtils.sign({ id: created.id, email: created.email, role: created.role, sid: sessionId });
+    const decoded = jwtUtils.verify(token);
+    const sessionExpiresAt =
+      typeof decoded.exp === 'number'
+        ? new Date(decoded.exp * 1000).toISOString()
+        : null;
 
     return res.status(201).json({
       data: {
@@ -89,6 +97,7 @@ async function register(req, res, next) {
           subscription: created.subscription || 'plan_free',
           payment_due_date: created.payment_due_date || null,
           created_at: created.created_at,
+          session_expires_at: sessionExpiresAt,
         },
       },
       meta: null,

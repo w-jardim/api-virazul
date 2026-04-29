@@ -13,7 +13,7 @@ const createCheckoutPremium = asyncHandler(async (req, res, next) => {
   if (error) {
     return next(new AppError('VALIDATION_ERROR', error.message, 400));
   }
-  const result = await billingService.createCheckoutPremium(req.user.id, req.user.email);
+  const result = await billingService.createCheckoutPremium(req.user.id, req.user.email, req.body.plan_code);
   res.status(200).json({ data: result, meta: null, errors: null });
 });
 
@@ -22,7 +22,7 @@ const createPixCharge = asyncHandler(async (req, res, next) => {
   if (error) {
     return next(new AppError('VALIDATION_ERROR', error.message, 400));
   }
-  const result = await billingService.createPixCharge(req.user.id, req.user.email);
+  const result = await billingService.createPixCharge(req.user.id, req.user.email, req.body.plan_code);
   res.status(200).json({ data: result, meta: null, errors: null });
 });
 

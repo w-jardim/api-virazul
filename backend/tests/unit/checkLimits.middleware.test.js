@@ -40,15 +40,16 @@ describe('checkLimits middleware', () => {
     return { middleware, query, res, next };
   }
 
-  test('permite plano free em modo preview sem persistencia', async () => {
+  test('permite plano free com persistencia temporaria na sessao', async () => {
     const { middleware, res, next } = setup();
     const req = {
       plan: 'plan_free',
+      user: { id: 2 },
       account: {
         invalid_plan: false,
         entitlements: {
           canCreate: true,
-          canPersistData: false,
+          canPersistData: true,
           isBillingBlocked: false,
         },
       },

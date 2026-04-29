@@ -10,18 +10,19 @@ O contexto técnico atual deste repositório inclui backend Node/Express, migrat
 
 ## Regras Globais do Virazul
 
-- Os únicos códigos canônicos de plano aceitos são `plan_free`, `plan_starter`, `plan_pro` e `plan_partner`.
+- Os únicos códigos canônicos de plano comercial aceitos são `plan_free`, `plan_starter` e `plan_pro`.
+- `plan_partner` deve ser tratado apenas como alias legado de compatibilidade, nunca como plano público final.
 - É proibido adotar nomes alternativos de plano como padrão definitivo.
 - AdSense e anúncios só podem ser exibidos quando `plan.has_ads === true`.
-- `plan_partner` é um benefício administrativo temporário, não uma compra pública.
-- Ao expirar `plan_partner`, a conta deve cair para o plano persistente definido, por padrão `plan_starter`.
+- `partner` é um benefício administrativo temporário, não uma compra pública e não faz parte do catálogo comercial.
+- Ao expirar `partner`, a conta deve voltar ao plano base persistente do usuário.
 - Após a queda do benefício partner, a conta entra em cobrança.
 - Se a conta não pagar ou não renovar, mantém acesso básico, mas deve ficar bloqueada para criar ou editar dados até regularização.
 - Nenhum agente pode editar arquivos antes de produzir diagnóstico e triagem.
 - Toda alteração deve listar arquivos impactados antes de aplicar patch.
 - Toda alteração deve informar riscos identificados.
 - Toda alteração deve informar testes necessários.
-- Qualquer alteração em plano, billing, subscription ou autorização deve considerar obrigatoriamente os códigos `plan_free`, `plan_starter`, `plan_pro` e `plan_partner`.
+- Qualquer alteração em plano, billing, subscription ou autorização deve considerar obrigatoriamente os códigos `plan_free`, `plan_starter`, `plan_pro` e a condição administrativa `partner`.
 - Qualquer alteração que toque plano ou anúncios deve preservar a regra `plan.has_ads === true`.
 - Qualquer alteração em `plan_partner` deve respeitar que:
   - partner é concessão administrativa
@@ -65,17 +66,12 @@ O contexto técnico atual deste repositório inclui backend Node/Express, migrat
 - trial de 7 dias
 - plano completo
 
-### `plan_partner`
+### `partner`
 
-- R$0 de cortesia
-- sem anúncios
-- 999999 API calls por mês
-- usuários ilimitados
-- suporte Chat
-- sem Stripe
+- cortesia administrativa temporária
 - criado manualmente por admin
 - duração de até 365 dias
-- concessão administrativa temporária de acesso full
+- eleva temporariamente os entitlements sem trocar o plano comercial base
 - não é compra pública
 
 ## Governança Geral dos Agentes

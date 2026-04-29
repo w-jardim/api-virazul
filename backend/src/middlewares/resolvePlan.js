@@ -29,8 +29,9 @@ module.exports = async function resolvePlan(req, res, next) {
     const partnerExpiresAt = sub?.partner_expires_at || null;
     const access = resolveAccountAccess({
       rawPlan,
+      userBasePlan: userRow?.subscription || null,
       subscriptionStatus: subStatus,
-      currentPeriodEnd: sub?.current_period_end || userRow?.payment_due_date || null,
+      currentPeriodEnd: sub?.current_period_end || null,
       trialEndsAt: sub?.trial_ends_at || null,
       partnerExpiresAt,
     });
@@ -42,10 +43,12 @@ module.exports = async function resolvePlan(req, res, next) {
 
     req.account = {
       plan: access.effectivePlan,
+      base_plan: access.basePlan,
       raw_plan: rawPlan,
       normalized_plan: access.normalizedPlan,
       status: accountStatus,
       partner_expires_at: partnerExpiresAt,
+      partner_active: access.partnerActive,
       payment_state: access.paymentState,
       entitlements: access.entitlements,
       invalid_plan: !access.isKnownPlan,

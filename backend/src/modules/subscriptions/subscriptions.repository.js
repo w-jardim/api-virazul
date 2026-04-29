@@ -155,16 +155,51 @@ async function setPartnerPlan(userId, days) {
   const expires = new Date();
   expires.setDate(expires.getDate() + days);
 
-  await pool.query(
-    `UPDATE subscriptions
-        SET plan = 'plan_partner', partner_expires_at = ?, status = 'active', updated_at = CURRENT_TIMESTAMP
-      WHERE owner_user_id = ?
-      ORDER BY created_at DESC
-      LIMIT 1`,
-    [expires, userId]
+  const current = await findCurrentByUserId(userId);
+
+  if (current) {
+    await pool.query(
+      `UPDATE subscriptions
+          SET partner_expires_at = ?, status = 'active', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?`,
+      [expires, current.id]
+    );
+    return expires;
+  }
+
+  const [userRows] = await pool.query(
+    'SELECT subscription FROM users WHERE id = ? LIMIT 1',
+    [userId]
   );
+  const basePlan = normalizePlanCode(userRows[0]?.subscription, { fallback: 'plan_starter' });
+
+  await createSubscription({
+    userId,
+    plan: basePlan,
+    status: 'active',
+    trialEndsAt: null,
+    currentPeriodStart: null,
+    currentPeriodEnd: null,
+    partnerExpiresAt: expires,
+  });
 
   return expires;
+}
+
+async function clearPartnerCondition(userId) {
+  const current = await findCurrentByUserId(userId);
+  if (!current) {
+    return null;
+  }
+
+  await pool.query(
+    `UPDATE subscriptions
+        SET partner_expires_at = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?`,
+    [current.id]
+  );
+
+  return findById(current.id);
 }
 
 async function syncLegacyUserFields(userId, fields) {
@@ -197,6 +232,28 @@ async function syncLegacyUserFields(userId, fields) {
   await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
 }
 
+async function cleanupFreemiumSessionServices(
+  userId,
+  { currentSessionId = null, now = new Date().toISOString() } = {}
+) {
+  const sessionIdParam = currentSessionId || '__no_active_session__';
+  const [result] = await pool.query(
+    `UPDATE services
+        SET deleted_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+        AND JSON_UNQUOTE(JSON_EXTRACT(financial_snapshot, '$.freemium_session.temporary')) = 'true'
+        AND (
+          COALESCE(JSON_UNQUOTE(JSON_EXTRACT(financial_snapshot, '$.freemium_session.session_expires_at')), '') < ?
+          OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(financial_snapshot, '$.freemium_session.session_id')), '') <> ?
+        )`,
+    [userId, now, sessionIdParam]
+  );
+
+  return result.affectedRows || 0;
+}
+
 module.exports = {
   findLatestByUserId,
   findCurrentByUserId,
@@ -210,6 +267,8 @@ module.exports = {
   attachGatewayData,
   cancelSubscription,
   setPartnerPlan,
+  clearPartnerCondition,
   syncLegacyUserFields,
+  cleanupFreemiumSessionServices,
   normalizeSubscriptionRecord,
 };

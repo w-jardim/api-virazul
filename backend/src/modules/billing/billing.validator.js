@@ -1,7 +1,12 @@
 const Joi = require('joi');
+const { NEW_PLAN_CODES } = require('../../constants/plans');
 
-const checkoutSchema = Joi.object({}).unknown(true);
-const pixSchema = Joi.object({}).unknown(true);
+const checkoutSchema = Joi.object({
+  plan_code: Joi.string().valid(...NEW_PLAN_CODES.filter((code) => code !== 'plan_free')).default('plan_pro'),
+}).unknown(true);
+const pixSchema = Joi.object({
+  plan_code: Joi.string().valid(...NEW_PLAN_CODES.filter((code) => code !== 'plan_free')).default('plan_pro'),
+}).unknown(true);
 const cancelSchema = Joi.object({}).unknown(true);
 
 function validateCheckout(body) {

@@ -30,6 +30,11 @@ module.exports = async function authMiddleware(req, res, next) {
       id: payload.id,
       email: payload.email,
       role: payload.role,
+      session_id: payload.sid || null,
+      session_expires_at:
+        typeof payload.exp === 'number'
+          ? new Date(payload.exp * 1000).toISOString()
+          : null,
     };
     return enforceSubscription(req, res, (err) => {
       if (err) return next(err);

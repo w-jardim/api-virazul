@@ -3,6 +3,8 @@ const logger = require('../../utils/logger');
 const env = require('../../config/env');
 const billingRepo = require('./billing.repository');
 const subscriptionsRepo = require('../subscriptions/subscriptions.repository');
+const { PLAN_DEFINITIONS } = require('../../constants/plans');
+const { normalizePlanCode, resolveAccountAccess } = require('../../utils/plan-access');
 
 const MP_STATUS_MAP = {
   approved: 'approved',
@@ -15,6 +17,59 @@ const MP_STATUS_MAP = {
   charged_back: 'refunded',
 };
 
+const BILLABLE_PLANS = new Set(['plan_starter', 'plan_pro']);
+const DEFAULT_CHECKOUT_PLAN = 'plan_pro';
+const TRIAL_PLAN = 'plan_pro';
+
+function resolveTargetPlan(planCode) {
+  const normalized = normalizePlanCode(planCode, { fallback: DEFAULT_CHECKOUT_PLAN });
+  if (!BILLABLE_PLANS.has(normalized)) {
+    throw new AppError('BILLING_PLAN_NOT_SUPPORTED', 'Plano informado nao pode ser contratado.', 400);
+  }
+  return normalized;
+}
+
+function parsePaymentMeta(rawPayloadJson) {
+  if (!rawPayloadJson) {
+    return {};
+  }
+
+  if (typeof rawPayloadJson === 'object') {
+    return rawPayloadJson;
+  }
+
+  try {
+    return JSON.parse(rawPayloadJson);
+  } catch (error) {
+    return {};
+  }
+}
+
+function buildPlanPricing(planCode, planRecord) {
+  return {
+    amountCents: planRecord?.price_cents || PLAN_DEFINITIONS[planCode]?.priceCents || env.billing.premiumPriceCents,
+    name: planRecord?.name || PLAN_DEFINITIONS[planCode]?.name || planCode,
+  };
+}
+
+function buildAccessFromSubscription(sub) {
+  if (!sub) {
+    return {
+      basePlan: 'plan_free',
+      partnerActive: false,
+    };
+  }
+
+  return resolveAccountAccess({
+    rawPlan: sub.raw_plan || sub.plan,
+    userBasePlan: sub.raw_plan || sub.plan,
+    subscriptionStatus: sub.status,
+    currentPeriodEnd: sub.current_period_end || null,
+    trialEndsAt: sub.trial_ends_at || null,
+    partnerExpiresAt: sub.partner_expires_at || null,
+  });
+}
+
 async function startTrial(userId) {
   const existing = await subscriptionsRepo.findCurrentByUserId(userId);
   if (existing) {
@@ -26,7 +81,7 @@ async function startTrial(userId) {
   const subId = await subscriptionsRepo.createTrialSubscription(userId, trialDays);
 
   await subscriptionsRepo.syncLegacyUserFields(userId, {
-    subscription: 'plan_pro',
+    subscription: TRIAL_PLAN,
     paymentStatus: 'pending',
     paymentDueDate: null,
   });
@@ -49,12 +104,15 @@ async function getSubscriptionStatus(userId) {
   }
 
   const latestPayment = await billingRepo.findLatestPaymentByUserId(userId);
+  const access = buildAccessFromSubscription(sub);
 
   return {
-    plan: sub.plan || 'plan_free',
-    plan_name: sub.plan_name || sub.plan || 'Free',
+    plan: access.basePlan,
+    plan_name: sub.plan_name || access.basePlan || 'Free',
     plan_price_cents: sub.price_cents || 0,
     status: sub.status,
+    partner_active: access.partnerActive,
+    partner_expires_at: sub.partner_expires_at || null,
     started_at: sub.started_at || null,
     trial_ends_at: sub.trial_ends_at || null,
     current_period_start: sub.current_period_start || null,
@@ -79,6 +137,8 @@ function buildFreeResponse() {
     plan_name: 'Free',
     plan_price_cents: 0,
     status: 'active',
+    partner_active: false,
+    partner_expires_at: null,
     started_at: null,
     trial_ends_at: null,
     current_period_start: null,
@@ -89,36 +149,40 @@ function buildFreeResponse() {
   };
 }
 
-async function createCheckoutPremium(userId, userEmail) {
+async function createCheckoutPremium(userId, userEmail, targetPlanInput = DEFAULT_CHECKOUT_PLAN) {
   const mp = env.mercadoPago;
   if (!mp || !mp.accessToken) {
     throw new AppError('BILLING_NOT_CONFIGURED', 'Gateway de pagamento nao configurado.', 503);
   }
 
-  const plan = await billingRepo.findPlanByCode('plan_pro');
+  const targetPlan = resolveTargetPlan(targetPlanInput);
+  const plan = await billingRepo.findPlanByCode(targetPlan);
   if (!plan) {
-    throw new AppError('BILLING_PLAN_NOT_FOUND', 'Plano Pro nao encontrado.', 404);
+    throw new AppError('BILLING_PLAN_NOT_FOUND', 'Plano nao encontrado.', 404);
   }
 
   const sub = await subscriptionsRepo.findCurrentByUserId(userId);
-  const amountCents = plan.price_cents || env.billing.premiumPriceCents;
-  const amountBRL = amountCents / 100;
+  const pricing = buildPlanPricing(targetPlan, plan);
+  const amountBRL = pricing.amountCents / 100;
 
   const paymentDbId = await billingRepo.createPayment({
     userId,
     subscriptionId: sub ? sub.id : null,
     gateway: 'mercadopago',
-    amountCents,
+    amountCents: pricing.amountCents,
     currency: 'BRL',
     status: 'pending',
+    rawPayloadJson: {
+      plan_code: targetPlan,
+    },
   });
 
   const backUrl = mp.backUrl || 'http://localhost:3000';
   const preferenceBody = {
     items: [
       {
-        id: 'plan_pro',
-        title: `Virazul - ${plan.name}`,
+        id: targetPlan,
+        title: `Virazul - ${pricing.name}`,
         quantity: 1,
         unit_price: amountBRL,
         currency_id: 'BRL',
@@ -151,38 +215,48 @@ async function createCheckoutPremium(userId, userEmail) {
   }
 
   const preference = await response.json();
-  logger.info('billing.checkout.created', { user_id: userId, preference_id: preference.id, payment_db_id: paymentDbId });
+  logger.info('billing.checkout.created', {
+    user_id: userId,
+    preference_id: preference.id,
+    payment_db_id: paymentDbId,
+    plan_code: targetPlan,
+  });
 
   return {
     checkout_url: preference.init_point,
     preference_id: preference.id,
     payment_id: paymentDbId,
+    plan_code: targetPlan,
   };
 }
 
-async function createPixCharge(userId, userEmail) {
+async function createPixCharge(userId, userEmail, targetPlanInput = DEFAULT_CHECKOUT_PLAN) {
   const mp = env.mercadoPago;
   if (!mp || !mp.accessToken) {
     throw new AppError('BILLING_NOT_CONFIGURED', 'Gateway de pagamento nao configurado.', 503);
   }
 
-  const plan = await billingRepo.findPlanByCode('plan_pro');
+  const targetPlan = resolveTargetPlan(targetPlanInput);
+  const plan = await billingRepo.findPlanByCode(targetPlan);
   if (!plan) {
-    throw new AppError('BILLING_PLAN_NOT_FOUND', 'Plano Pro nao encontrado.', 404);
+    throw new AppError('BILLING_PLAN_NOT_FOUND', 'Plano nao encontrado.', 404);
   }
 
   const sub = await subscriptionsRepo.findCurrentByUserId(userId);
-  const amountCents = plan.price_cents || env.billing.premiumPriceCents;
-  const amountBRL = amountCents / 100;
+  const pricing = buildPlanPricing(targetPlan, plan);
+  const amountBRL = pricing.amountCents / 100;
 
   const paymentDbId = await billingRepo.createPayment({
     userId,
     subscriptionId: sub ? sub.id : null,
     gateway: 'mercadopago',
-    amountCents,
+    amountCents: pricing.amountCents,
     currency: 'BRL',
     status: 'pending',
     paymentMethod: 'pix',
+    rawPayloadJson: {
+      plan_code: targetPlan,
+    },
   });
 
   const pixBody = {
@@ -191,7 +265,7 @@ async function createPixCharge(userId, userEmail) {
     payer: { email: userEmail },
     external_reference: String(paymentDbId),
     notification_url: mp.webhookUrl || undefined,
-    description: `Virazul - ${plan.name}`,
+    description: `Virazul - ${pricing.name}`,
   };
 
   const response = await fetch('https://api.mercadopago.com/v1/payments', {
@@ -218,12 +292,18 @@ async function createPixCharge(userId, userEmail) {
   });
 
   const txData = (mpPayment.point_of_interaction && mpPayment.point_of_interaction.transaction_data) || {};
-  logger.info('billing.pix.created', { user_id: userId, mp_payment_id: mpPayment.id, payment_db_id: paymentDbId });
+  logger.info('billing.pix.created', {
+    user_id: userId,
+    mp_payment_id: mpPayment.id,
+    payment_db_id: paymentDbId,
+    plan_code: targetPlan,
+  });
 
   return {
     payment_id: paymentDbId,
     mp_payment_id: mpPayment.id,
     status: mpPayment.status,
+    plan_code: targetPlan,
     qr_code: txData.qr_code || null,
     qr_code_base64: txData.qr_code_base64 || null,
     ticket_url: txData.ticket_url || null,
@@ -236,18 +316,20 @@ async function cancelUserSubscription(userId) {
     throw new AppError('BILLING_NO_SUBSCRIPTION', 'Nenhuma assinatura encontrada.', 404);
   }
 
-  if (sub.plan === 'plan_free' || sub.plan === 'plan_partner') {
+  const access = buildAccessFromSubscription(sub);
+
+  if (access.partnerActive || access.basePlan === 'plan_free') {
     throw new AppError(
       'BILLING_FREE_ADMIN_ONLY',
-      'O plano Free é uma cortesia administrativa e só pode ser alterado por um administrador.',
+      'A condicao partner e o plano Free so podem ser alterados por um administrador.',
       400
     );
   }
 
-  if (sub.plan === 'plan_pro' && sub.status === 'trialing') {
+  if (access.basePlan === TRIAL_PLAN && sub.status === 'trialing') {
     throw new AppError(
       'BILLING_TRIAL_NOT_CANCELABLE',
-      'O período de teste permanece ativo até o vencimento e não pode ser cancelado por autoatendimento.',
+      'O periodo de teste permanece ativo ate o vencimento e nao pode ser cancelado por autoatendimento.',
       400
     );
   }
@@ -256,17 +338,17 @@ async function cancelUserSubscription(userId) {
     throw new AppError('BILLING_ALREADY_CANCELED', 'Assinatura ja esta cancelada ou expirada.', 400);
   }
 
-  if (sub.plan !== 'plan_pro') {
+  if (!BILLABLE_PLANS.has(access.basePlan)) {
     throw new AppError(
       'BILLING_PLAN_NOT_CANCELABLE',
-      'Somente assinaturas Pro podem ser canceladas por autoatendimento.',
+      'Somente planos comerciais pagos podem ser cancelados por autoatendimento.',
       400
     );
   }
 
   await subscriptionsRepo.cancelSubscription(sub.id);
   await subscriptionsRepo.syncLegacyUserFields(userId, {
-    subscription: 'plan_pro',
+    subscription: access.basePlan,
     paymentStatus: 'cancelled',
     paymentDueDate: null,
   });
@@ -274,7 +356,7 @@ async function cancelUserSubscription(userId) {
   logger.info('billing.subscription.canceled', {
     user_id: userId,
     sub_id: sub.id,
-    legacy_subscription: 'plan_pro',
+    legacy_subscription: access.basePlan,
   });
 
   return { canceled: true };
@@ -340,32 +422,35 @@ async function processMpPaymentEvent(mpPaymentId) {
 
   if (!payment && externalRef) {
     const refId = parseInt(externalRef, 10);
-    if (!isNaN(refId)) {
+    if (!Number.isNaN(refId)) {
       payment = await billingRepo.findPaymentById(refId);
     }
   }
 
-  if (payment) {
-    await billingRepo.updatePayment(payment.id, {
-      status: ourStatus,
-      gateway_payment_id: mpPaymentId,
-      payment_method: mpPayment.payment_type_id || null,
-      paid_at: mpStatus === 'approved' ? new Date() : null,
-      raw_payload_json: mpPayment,
-    });
-  } else {
+  if (!payment) {
     logger.warn('billing.webhook.payment_not_found', { mp_id: mpPaymentId, ext_ref: externalRef });
     return;
   }
 
+  const paymentMeta = parsePaymentMeta(payment.raw_payload_json);
+  const targetPlan = resolveTargetPlan(paymentMeta.plan_code || DEFAULT_CHECKOUT_PLAN);
+
+  await billingRepo.updatePayment(payment.id, {
+    status: ourStatus,
+    gateway_payment_id: mpPaymentId,
+    payment_method: mpPayment.payment_type_id || null,
+    paid_at: mpStatus === 'approved' ? new Date() : null,
+    raw_payload_json: mpPayment,
+  });
+
   if (mpStatus === 'approved') {
-    await activateSubscriptionForPayment(payment.id, mpPayment);
+    await activateSubscriptionForPayment(payment.id, mpPayment, targetPlan);
   } else if (mpStatus === 'rejected' || mpStatus === 'cancelled') {
-    await handleFailedPayment(payment);
+    await handleFailedPayment(payment, targetPlan);
   }
 }
 
-async function activateSubscriptionForPayment(paymentDbId, mpPayment) {
+async function activateSubscriptionForPayment(paymentDbId, mpPayment, targetPlan = DEFAULT_CHECKOUT_PLAN) {
   const payment = await billingRepo.findPaymentById(paymentDbId);
   if (!payment) return;
 
@@ -380,9 +465,10 @@ async function activateSubscriptionForPayment(paymentDbId, mpPayment) {
   if (sub) {
     await subscriptionsRepo.updateSubscriptionCycle(sub.id, {
       status: 'active',
-      plan: 'plan_pro',
+      plan: targetPlan,
       currentPeriodStart: now,
       currentPeriodEnd: periodEnd,
+      partnerExpiresAt: null,
     });
     await subscriptionsRepo.attachGatewayData(sub.id, {
       gateway: 'mercadopago',
@@ -392,10 +478,11 @@ async function activateSubscriptionForPayment(paymentDbId, mpPayment) {
   } else {
     const newSubId = await subscriptionsRepo.createSubscription({
       userId,
-      plan: 'plan_pro',
+      plan: targetPlan,
       status: 'active',
       currentPeriodStart: now,
       currentPeriodEnd: periodEnd,
+      partnerExpiresAt: null,
     });
     await subscriptionsRepo.attachGatewayData(newSubId, {
       gateway: 'mercadopago',
@@ -405,15 +492,19 @@ async function activateSubscriptionForPayment(paymentDbId, mpPayment) {
   }
 
   await subscriptionsRepo.syncLegacyUserFields(userId, {
-    subscription: 'plan_pro',
+    subscription: targetPlan,
     paymentStatus: 'paid',
     paymentDueDate: periodEnd.toISOString().slice(0, 10),
   });
 
-  logger.info('billing.subscription.activated', { user_id: userId, period_end: periodEnd });
+  logger.info('billing.subscription.activated', {
+    user_id: userId,
+    period_end: periodEnd,
+    plan_code: targetPlan,
+  });
 }
 
-async function handleFailedPayment(payment) {
+async function handleFailedPayment(payment, targetPlan = DEFAULT_CHECKOUT_PLAN) {
   const userId = payment.user_id;
   const sub = payment.subscription_id
     ? await subscriptionsRepo.findById(payment.subscription_id)
@@ -421,8 +512,11 @@ async function handleFailedPayment(payment) {
 
   if (sub && sub.status === 'active') {
     await subscriptionsRepo.updateSubscriptionStatus(sub.id, 'past_due');
-    await subscriptionsRepo.syncLegacyUserFields(userId, { paymentStatus: 'rejected' });
-    logger.warn('billing.subscription.past_due', { user_id: userId, sub_id: sub.id });
+    await subscriptionsRepo.syncLegacyUserFields(userId, {
+      subscription: targetPlan,
+      paymentStatus: 'rejected',
+    });
+    logger.warn('billing.subscription.past_due', { user_id: userId, sub_id: sub.id, plan_code: targetPlan });
   }
 }
 

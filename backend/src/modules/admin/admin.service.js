@@ -1,6 +1,6 @@
 const AppError = require('../../utils/app-error');
 const logger = require('../../utils/logger');
-const { normalizePlanCode } = require('../../utils/plan-access');
+const { normalizePlanCode, resolveBasePlan } = require('../../utils/plan-access');
 const adminRepository = require('./admin.repository');
 
 const ADMIN_PAYMENT_STATUS_TO_SUBSCRIPTION_STATUS = {
@@ -8,6 +8,7 @@ const ADMIN_PAYMENT_STATUS_TO_SUBSCRIPTION_STATUS = {
   pending: 'pending',
   overdue: 'past_due',
 };
+const DEFAULT_PARTNER_DAYS = 365;
 
 async function getStats() {
   return adminRepository.getStats();
@@ -56,12 +57,23 @@ async function changeSubscription(id, subscription) {
     throw new AppError('INVALID_PLAN', 'Plano invalido ou nao suportado.', 400);
   }
 
-  await adminRepository.updateSubscription(id, planCode);
-
-  // Sync subscriptions table (source of truth)
   const subscriptionsRepo = require('../subscriptions/subscriptions.repository');
   const sub = await subscriptionsRepo.findCurrentByUserId(id);
   const now = new Date();
+  const basePlan = resolveBasePlan({
+    rawPlan: user.subscription,
+    userBasePlan: user.subscription,
+    fallbackPlan: 'plan_starter',
+  });
+
+  if (planCode === 'plan_partner') {
+    await adminRepository.updateSubscription(id, basePlan);
+    await subscriptionsRepo.setPartnerPlan(id, DEFAULT_PARTNER_DAYS);
+    logger.info('admin.partner.granted', { user_id: id, base_plan: basePlan, duration_days: DEFAULT_PARTNER_DAYS });
+    return adminRepository.findById(id);
+  }
+
+  await adminRepository.updateSubscription(id, planCode);
 
   if (planCode === 'plan_starter' || planCode === 'plan_pro') {
     const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -91,9 +103,7 @@ async function changeSubscription(id, subscription) {
       paymentStatus: 'paid',
       paymentDueDate: periodEnd.toISOString().slice(0, 10),
     });
-  } else if (planCode === 'plan_free' || planCode === 'plan_partner') {
-    const partnerExpiresAt = planCode === 'plan_partner' ? sub?.partner_expires_at || null : null;
-
+  } else if (planCode === 'plan_free') {
     if (sub) {
       await subscriptionsRepo.updateSubscriptionCycle(sub.id, {
         status: 'active',
@@ -102,7 +112,7 @@ async function changeSubscription(id, subscription) {
         currentPeriodStart: null,
         currentPeriodEnd: null,
         expiresAt: null,
-        partnerExpiresAt,
+        partnerExpiresAt: null,
         canceledAt: null,
       });
     } else {
@@ -113,7 +123,7 @@ async function changeSubscription(id, subscription) {
         trialEndsAt: null,
         currentPeriodStart: null,
         currentPeriodEnd: null,
-        partnerExpiresAt,
+        partnerExpiresAt: null,
       });
     }
 
@@ -134,7 +144,7 @@ async function changePaymentStatus(id, paymentStatus) {
     throw new AppError('USER_NOT_FOUND', 'Usuario nao encontrado.', 404);
   }
 
-  if (['plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
+  if (user.subscription === 'plan_free' || user.role === 'ADMIN_MASTER') {
     return adminRepository.updatePaymentStatus(id, null);
   }
 

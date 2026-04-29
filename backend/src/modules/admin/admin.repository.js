@@ -1,6 +1,10 @@
 const bcrypt = require('bcrypt');
 const { pool } = require('../../config/db');
-const { normalizePlanCode, resolveEffectivePlan } = require('../../utils/plan-access');
+const {
+  normalizePlanCode,
+  resolveBasePlan,
+  isPartnerActive,
+} = require('../../utils/plan-access');
 
 const USER_FIELDS = `id, name, email, role, status, subscription, payment_status, payment_due_date, rank_group, created_at, updated_at, last_login_at`;
 
@@ -202,13 +206,22 @@ async function getStats() {
   };
 
   for (const row of planRows) {
-    const effectivePlan = resolveEffectivePlan({
+    const basePlan = resolveBasePlan({
       rawPlan: row.subscription_plan || row.user_subscription || 'plan_free',
-      partnerExpiresAt: row.partner_expires_at || null,
+      userBasePlan: row.user_subscription || null,
       fallbackPlan: 'plan_free',
     });
-    const normalizedPlan = normalizePlanCode(effectivePlan, { fallback: 'plan_free' });
+    const normalizedPlan = normalizePlanCode(basePlan, { fallback: 'plan_free' });
     planCounts[normalizedPlan] += 1;
+
+    if (
+      isPartnerActive({
+        rawPlan: row.subscription_plan || row.user_subscription || null,
+        partnerExpiresAt: row.partner_expires_at || null,
+      })
+    ) {
+      planCounts.plan_partner += 1;
+    }
   }
 
   return {

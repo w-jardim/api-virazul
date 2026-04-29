@@ -2,7 +2,10 @@ const env = require('../config/env');
 const AppError = require('../utils/app-error');
 const subscriptionsRepository = require('../modules/subscriptions/subscriptions.repository');
 const logger = require('../utils/logger');
-const { isBlockedSubscriptionStatus } = require('../utils/plan-access');
+const {
+  isBlockedSubscriptionStatus,
+  resolveAccountAccess,
+} = require('../utils/plan-access');
 
 function isBlockedStatus(status) {
   if (!status) {
@@ -23,7 +26,17 @@ async function enforceSubscription(req, res, next) {
 
   try {
     const latest = await subscriptionsRepository.findLatestByUserId(req.user.id);
-    if (latest && isBlockedStatus(latest.status)) {
+    const access = latest
+      ? resolveAccountAccess({
+          rawPlan: latest.raw_plan || latest.plan,
+          subscriptionStatus: latest.status,
+          currentPeriodEnd: latest.current_period_end,
+          trialEndsAt: latest.trial_ends_at,
+          partnerExpiresAt: latest.partner_expires_at,
+        })
+      : null;
+
+    if (latest && !access?.partnerActive && isBlockedStatus(latest.status)) {
       logger.warn('auth.subscription.blocked', {
         request_id: req.requestId || null,
         user_id: req.user.id,

@@ -1,7 +1,11 @@
 const AppError = require('../utils/app-error');
 const logger = require('../utils/logger');
 const subscriptionsRepo = require('../modules/subscriptions/subscriptions.repository');
-const { hasDateExpired, normalizePlanCode } = require('../utils/plan-access');
+const {
+  hasDateExpired,
+  normalizePlanCode,
+  resolveAccountAccess,
+} = require('../utils/plan-access');
 
 const READ_METHODS = ['GET', 'HEAD', 'OPTIONS'];
 
@@ -14,7 +18,18 @@ async function enforcePlan(req, res, next) {
 
     if (!sub) return next();
 
-    const { status, trial_ends_at, current_period_end } = sub;
+    const { status, trial_ends_at, current_period_end, partner_expires_at } = sub;
+    const access = resolveAccountAccess({
+      rawPlan: sub.raw_plan || sub.plan,
+      subscriptionStatus: status,
+      currentPeriodEnd: current_period_end,
+      trialEndsAt: trial_ends_at,
+      partnerExpiresAt: partner_expires_at,
+    });
+
+    if (access.partnerActive) {
+      return next();
+    }
 
     if (status === 'trialing') {
       if (hasDateExpired(trial_ends_at)) {
@@ -54,6 +69,18 @@ async function requirePremium(req, res, next) {
 
   try {
     const sub = await subscriptionsRepo.findCurrentByUserId(req.user.id);
+
+    const access = resolveAccountAccess({
+      rawPlan: sub.raw_plan || sub.plan,
+      subscriptionStatus: sub.status,
+      currentPeriodEnd: sub.current_period_end,
+      trialEndsAt: sub.trial_ends_at,
+      partnerExpiresAt: sub.partner_expires_at,
+    });
+
+    if (access.partnerActive) {
+      return next();
+    }
 
     if (!sub || sub.status !== 'active' || normalizePlanCode(sub.plan, { fallback: null }) !== 'plan_pro') {
       return next(new AppError('PLAN_PRO_REQUIRED', 'Este recurso requer plano Pro ativo.', 403));

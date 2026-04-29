@@ -10,13 +10,12 @@ const LEGACY_PLAN_CODE_MAP = {
   premium: 'plan_pro',
   trial: 'plan_pro',
   plan_pro: 'plan_pro',
-  partner: 'plan_partner',
-  parceiro: 'plan_partner',
-  plan_partner: 'plan_partner',
   local: 'plan_free',
   inicial: 'plan_free',
   preview: 'plan_free',
 };
+
+const PARTNER_PLAN_CODES = new Set(['partner', 'parceiro', 'plan_partner']);
 
 const BLOCKED_SUBSCRIPTION_STATUSES = new Set([
   'suspended',
@@ -45,11 +44,23 @@ function normalizePlanCode(planCode, { allowPreview = false, fallback = null } =
     return 'preview';
   }
 
+  if (PARTNER_PLAN_CODES.has(raw)) {
+    return 'plan_partner';
+  }
+
   return LEGACY_PLAN_CODE_MAP[raw] || fallback;
 }
 
 function isCanonicalPlanCode(planCode) {
   return NEW_PLAN_CODES.includes(planCode);
+}
+
+function isPartnerPlanCode(planCode) {
+  if (!planCode) {
+    return false;
+  }
+
+  return PARTNER_PLAN_CODES.has(String(planCode).trim().toLowerCase());
 }
 
 function isBlockedSubscriptionStatus(status) {
@@ -81,24 +92,36 @@ function hasDateExpired(value, now = new Date()) {
   return now > parsed;
 }
 
-function resolveEffectivePlan({
+function resolveBasePlan({
   rawPlan,
-  partnerExpiresAt = null,
+  userBasePlan = null,
   fallbackPlan = 'plan_free',
-  allowPreview = false,
-  now = new Date(),
 } = {}) {
-  const normalizedPlan = normalizePlanCode(rawPlan, {
-    allowPreview,
-    fallback: fallbackPlan,
-  });
-  const canonicalPlan = normalizedPlan === 'preview' ? 'plan_free' : normalizedPlan;
+  const normalizedRawPlan = normalizePlanCode(rawPlan, { fallback: null });
 
-  if (canonicalPlan === 'plan_partner' && hasDateExpired(partnerExpiresAt, now)) {
-    return 'plan_starter';
+  if (normalizedRawPlan && normalizedRawPlan !== 'plan_partner') {
+    return normalizedRawPlan;
   }
 
-  return normalizedPlan;
+  const normalizedUserPlan = normalizePlanCode(userBasePlan, { fallback: null });
+  if (normalizedUserPlan && normalizedUserPlan !== 'plan_partner') {
+    return normalizedUserPlan;
+  }
+
+  return isPartnerPlanCode(rawPlan) ? 'plan_starter' : fallbackPlan;
+}
+
+function isPartnerActive({
+  rawPlan,
+  partnerExpiresAt = null,
+  now = new Date(),
+} = {}) {
+  const hasPartnerFlag = isPartnerPlanCode(rawPlan) || Boolean(partnerExpiresAt);
+  if (!hasPartnerFlag) {
+    return false;
+  }
+
+  return !hasDateExpired(partnerExpiresAt, now);
 }
 
 function resolvePaymentState({
@@ -106,17 +129,18 @@ function resolvePaymentState({
   subscriptionStatus = null,
   currentPeriodEnd = null,
   trialEndsAt = null,
+  partnerActive = false,
   now = new Date(),
 } = {}) {
-  const canonicalPlan = normalizePlanCode(planCode, { fallback: 'plan_free' });
+  const canonicalPlan = resolveBasePlan({ rawPlan: planCode, fallbackPlan: 'plan_free' });
   const status = subscriptionStatus ? String(subscriptionStatus).trim().toLowerCase() : '';
 
-  if (canonicalPlan === 'plan_free') {
-    return isBlockedSubscriptionStatus(status) ? 'payment_blocked' : 'payment_exempt';
+  if (partnerActive) {
+    return 'payment_exempt';
   }
 
-  if (canonicalPlan === 'plan_partner') {
-    return isBlockedSubscriptionStatus(status) ? 'payment_blocked' : 'payment_exempt';
+  if (canonicalPlan === 'plan_free') {
+    return 'payment_exempt';
   }
 
   if (status === 'trialing') {
@@ -135,11 +159,12 @@ function resolvePaymentState({
     return 'payment_blocked';
   }
 
-  return 'payment_blocked';
+  return canonicalPlan === 'plan_free' ? 'payment_exempt' : 'payment_blocked';
 }
 
 function resolveAccountAccess({
   rawPlan,
+  userBasePlan = null,
   subscriptionStatus = null,
   currentPeriodEnd = null,
   trialEndsAt = null,
@@ -147,42 +172,51 @@ function resolveAccountAccess({
   now = new Date(),
 } = {}) {
   const normalizedPlan = normalizePlanCode(rawPlan, { fallback: null });
-  const effectivePlan = resolveEffectivePlan({
+  const basePlan = resolveBasePlan({
+    rawPlan,
+    userBasePlan,
+    fallbackPlan: 'plan_free',
+  });
+  const partnerActive = isPartnerActive({
     rawPlan,
     partnerExpiresAt,
-    fallbackPlan: 'plan_free',
     now,
   });
-  const canonicalPlan = effectivePlan === 'preview' ? 'plan_free' : effectivePlan;
   const paymentState = resolvePaymentState({
-    planCode: canonicalPlan,
+    planCode: basePlan,
     subscriptionStatus,
     currentPeriodEnd,
     trialEndsAt,
+    partnerActive,
     now,
   });
-  const entitlements = resolveEntitlements(canonicalPlan, paymentState);
+  const entitlements = resolveEntitlements(basePlan, paymentState, { partnerActive });
 
   return {
     rawPlan: rawPlan || null,
     normalizedPlan,
-    effectivePlan,
+    basePlan,
+    effectivePlan: basePlan,
+    partnerActive,
     paymentState,
     entitlements,
-    isKnownPlan: isCanonicalPlanCode(canonicalPlan),
+    isKnownPlan: isCanonicalPlanCode(basePlan),
     isLegacyPlan: Boolean(rawPlan) && normalizedPlan !== null && String(rawPlan) !== normalizedPlan,
-    planConfig: PLANS[canonicalPlan] || null,
+    planConfig: PLANS[basePlan] || null,
   };
 }
 
 module.exports = {
   LEGACY_PLAN_CODE_MAP,
+  PARTNER_PLAN_CODES,
   normalizePlanCode,
   isCanonicalPlanCode,
+  isPartnerPlanCode,
   isBlockedSubscriptionStatus,
   isPendingSubscriptionStatus,
   hasDateExpired,
-  resolveEffectivePlan,
+  resolveBasePlan,
+  isPartnerActive,
   resolvePaymentState,
   resolveAccountAccess,
 };
