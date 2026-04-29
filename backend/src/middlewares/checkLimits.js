@@ -4,17 +4,30 @@ const { PLANS } = require('../constants/plans');
 module.exports = async function checkLimits(req, res, next) {
   if (req.plan === 'preview') return next();
 
+  if (req.account?.invalid_plan) {
+    return res.status(403).json({ error: 'Plano invalido ou nao suportado.' });
+  }
+
   if (req.limitedAccess) {
     return res.status(403).json({ error: 'Pagamento pendente' });
   }
 
-  const config = PLANS[req.plan];
+  const entitlements = req.account?.entitlements;
+  if (entitlements) {
+    if (!entitlements.canCreate) {
+      const error = entitlements.isBillingBlocked
+        ? 'Pagamento pendente'
+        : 'Plano nao permite criacao de servicos';
+      return res.status(403).json({ error });
+    }
 
-  if (!config || config.service_limit === Infinity) return next();
-
-  if (config.service_limit === 0) {
-    return res.status(403).json({ error: 'Plano não permite criação de serviços' });
+    if (!entitlements.canPersistData) {
+      return next();
+    }
   }
+
+  const config = PLANS[req.plan];
+  if (!config || config.service_limit === Infinity) return next();
 
   try {
     const month = new Date().getMonth() + 1;

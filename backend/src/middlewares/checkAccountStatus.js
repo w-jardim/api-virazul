@@ -11,7 +11,7 @@ module.exports = function checkAccountStatus(req, res, next) {
     return res.status(403).json({ error: 'Conta suspensa' });
   }
 
-  if (status === 'past_due') {
+  if (status === 'past_due' || req.account?.payment_state === 'payment_overdue') {
     req.limitedAccess = true;
   }
 

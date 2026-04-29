@@ -12,7 +12,14 @@ jest.mock('../../src/modules/admin/admin.repository', () => ({
   getStats: jest.fn(),
 }));
 
+jest.mock('../../src/modules/subscriptions/subscriptions.repository', () => ({
+  findCurrentByUserId: jest.fn(),
+  updateLatestStatusByUserId: jest.fn(),
+  createSubscription: jest.fn(),
+}));
+
 const adminRepository = require('../../src/modules/admin/admin.repository');
+const subscriptionsRepository = require('../../src/modules/subscriptions/subscriptions.repository');
 const env = require('../../src/config/env');
 const app = require('../../src/app');
 
@@ -37,9 +44,9 @@ describe('Admin Integration', () => {
         email: 'policial.teste@viraazul.local',
         role: 'POLICE',
         status: 'active',
-        subscription: 'free',
-        payment_status: 'pending',
-        payment_due_date: '2026-06-15',
+        subscription: 'plan_free',
+        payment_status: null,
+        payment_due_date: null,
         rank_group: 'CABO_SOLDADO',
         created_at: '2026-03-01T00:00:00.000Z',
       },
@@ -55,7 +62,7 @@ describe('Admin Integration', () => {
     expect(response.body.data[0]).toMatchObject({
       id: 10,
       email: 'policial.teste@viraazul.local',
-      payment_status: 'pending',
+      payment_status: null,
     });
   });
 
@@ -70,11 +77,13 @@ describe('Admin Integration', () => {
   });
 
   test('PATCH /api/v1/admin/users/:id/payment-status updates payment_status', async () => {
-    adminRepository.findById.mockResolvedValue({ id: 10, email: 'policial.teste@viraazul.local' });
+    adminRepository.findById.mockResolvedValue({ id: 10, email: 'policial.teste@viraazul.local', subscription: 'plan_pro', role: 'POLICE' });
     adminRepository.updatePaymentStatus.mockResolvedValue({
       id: 10,
+      subscription: 'plan_pro',
       payment_status: 'paid',
     });
+    subscriptionsRepository.findCurrentByUserId.mockResolvedValue({ id: 22, plan: 'plan_pro', status: 'past_due' });
 
     const response = await request(app)
       .patch('/api/v1/admin/users/10/payment-status')
@@ -83,8 +92,42 @@ describe('Admin Integration', () => {
       .expect(200);
 
     expect(response.body.errors).toBeNull();
-    expect(response.body.data).toMatchObject({ id: 10, payment_status: 'paid' });
+    expect(response.body.data).toMatchObject({ id: 10, subscription: 'plan_pro', payment_status: 'paid' });
     expect(adminRepository.updatePaymentStatus).toHaveBeenCalledWith(10, 'paid');
+    expect(subscriptionsRepository.updateLatestStatusByUserId).toHaveBeenCalledWith(10, 'active');
+  });
+
+  test('PATCH /api/v1/admin/users/:id allows exempt plan user with null payment_status', async () => {
+    adminRepository.findById.mockResolvedValue({
+      id: 11,
+      email: 'free.user@viraazul.local',
+      subscription: 'plan_free',
+      role: 'POLICE',
+    });
+    adminRepository.updateById.mockResolvedValue({
+      id: 11,
+      subscription: 'plan_free',
+      payment_status: null,
+      payment_due_date: null,
+    });
+
+    const response = await request(app)
+      .patch('/api/v1/admin/users/11')
+      .set('Authorization', adminAuth())
+      .send({
+        subscription: 'plan_free',
+        payment_status: 'pending',
+        payment_due_date: '2026-06-10',
+      })
+      .expect(200);
+
+    expect(response.body.errors).toBeNull();
+    expect(response.body.data).toMatchObject({
+      id: 11,
+      subscription: 'plan_free',
+      payment_status: null,
+      payment_due_date: null,
+    });
   });
 
   test('GET /api/v1/admin/stats returns aggregated counts', async () => {
@@ -93,9 +136,10 @@ describe('Admin Integration', () => {
       active_users: 4,
       inactive_users: 1,
       suspended_users: 0,
-      free: 1,
-      trial: 2,
-      premium: 2,
+      plan_free: 1,
+      plan_starter: 2,
+      plan_pro: 2,
+      plan_partner: 0,
     });
 
     const response = await request(app)
@@ -103,6 +147,6 @@ describe('Admin Integration', () => {
       .set('Authorization', adminAuth())
       .expect(200);
 
-    expect(response.body.data).toMatchObject({ total_users: 5, premium: 2 });
+    expect(response.body.data).toMatchObject({ total_users: 5, plan_pro: 2 });
   });
 });

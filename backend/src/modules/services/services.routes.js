@@ -6,8 +6,8 @@ const checkLimits = require('../../middlewares/checkLimits');
 const controller = require('./services.controller');
 const validator = require('./services.validator');
 const { incrementUsage } = require('../../services/usageService');
-const { PLANS } = require('../../constants/plans');
 const asyncHandler = require('../../utils/async-handler');
+const logger = require('../../utils/logger');
 
 const router = express.Router();
 
@@ -21,14 +21,36 @@ router.post(
   checkLimits,
   validator.validateCreate,
   asyncHandler(async (req, res) => {
-    if (req.plan === 'preview' || !PLANS[req.plan]?.persistence) {
-      return res.json({
-        preview: true,
-        message: 'Modo demonstração. Dados não são salvos.',
+    if (req.plan === 'preview') {
+      return res.status(200).json({
+        data: {
+          preview: true,
+          persisted: false,
+          plan: req.plan,
+          message: 'Modo demonstracao. Dados nao sao salvos.',
+        },
+        meta: null,
+        errors: null,
       });
     }
-    const data = await require('./services.service').create(req.user, req.body);
-    await incrementUsage(req.user.id);
+
+    const data = await require('./services.service').create(
+      {
+        ...req.user,
+        plan: req.plan,
+        account: req.account,
+      },
+      req.body
+    );
+    try {
+      await incrementUsage(req.user.id);
+    } catch (error) {
+      logger.warn('services.create.usage-metric-failed', {
+        user_id: req.user.id,
+        service_id: data?.id || null,
+        error_message: error.message,
+      });
+    }
     res.status(201).json({ data, meta: null, errors: null });
   })
 );
