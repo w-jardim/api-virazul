@@ -47,6 +47,23 @@ describe('Admin Integration', () => {
         subscription: 'plan_free',
         payment_status: null,
         payment_due_date: null,
+        payment_state: 'payment_exempt',
+        partner_active: false,
+        entitlements: {
+          canView: true,
+          canCreate: true,
+          canEdit: true,
+          canDelete: true,
+          canPersistData: true,
+          isFullAccess: false,
+          hasLimitedTools: true,
+          hasAds: true,
+          paymentRequired: false,
+          isBillingBlocked: false,
+          isPreviewMode: false,
+          requiresUpgradeCta: true,
+          isTemporaryPersistence: true,
+        },
         rank_group: 'CABO_SOLDADO',
         created_at: '2026-03-01T00:00:00.000Z',
       },
@@ -63,6 +80,13 @@ describe('Admin Integration', () => {
       id: 10,
       email: 'policial.teste@viraazul.local',
       payment_status: null,
+      payment_state: 'payment_exempt',
+      partner_active: false,
+      entitlements: expect.objectContaining({
+        canCreate: true,
+        canEdit: true,
+        isBillingBlocked: false,
+      }),
     });
   });
 

@@ -39,6 +39,7 @@ describe('Google Auth Integration', () => {
         role: 'POLICE',
         rank_group: 'CABO_SOLDADO',
         subscription: 'free',
+        payment_status: null,
         payment_due_date: null,
         google_sub: null,
         created_at: '2026-01-01T00:00:00.000Z',
@@ -50,6 +51,7 @@ describe('Google Auth Integration', () => {
         role: 'POLICE',
         rank_group: 'CABO_SOLDADO',
         subscription: 'free',
+        payment_status: null,
         payment_due_date: null,
         google_sub: 'google-sub-1',
         created_at: '2026-01-01T00:00:00.000Z',
@@ -65,6 +67,16 @@ describe('Google Auth Integration', () => {
       id: 10,
       email: 'policial.teste@viraazul.local',
       role: 'POLICE',
+      subscription: 'plan_free',
+      payment_due_date: null,
+      payment_state: 'payment_exempt',
+      partner_active: false,
+      entitlements: {
+        canCreate: true,
+        canEdit: true,
+        hasAds: true,
+        isBillingBlocked: false,
+      },
     });
   });
 
@@ -85,6 +97,7 @@ describe('Google Auth Integration', () => {
       role: 'POLICE',
       rank_group: null,
       subscription: 'free',
+      payment_status: null,
       payment_due_date: null,
       google_sub: 'google-sub-2',
       created_at: '2026-01-01T00:00:00.000Z',
@@ -100,6 +113,16 @@ describe('Google Auth Integration', () => {
       id: 11,
       email: 'novo.usuario@viraazul.local',
       role: 'POLICE',
+      subscription: 'plan_free',
+      payment_due_date: null,
+      payment_state: 'payment_exempt',
+      partner_active: false,
+      entitlements: {
+        canCreate: true,
+        canEdit: true,
+        hasAds: true,
+        isBillingBlocked: false,
+      },
     });
   });
 });

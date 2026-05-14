@@ -1,12 +1,63 @@
 const AppError = require('../../utils/app-error');
 const passwordUtils = require('../../utils/password');
 const jwtUtils = require('../../utils/jwt');
-const { normalizePlanCode } = require('../../utils/plan-access');
+const { normalizePlanCode, resolveAccountAccess } = require('../../utils/plan-access');
 const authRepository = require('./auth.repository');
 const googleTokenService = require('./google-token.service');
 const logger = require('../../utils/logger');
 const subscriptionsRepo = require('../subscriptions/subscriptions.repository');
 const { randomUUID } = require('crypto');
+
+function buildAccountAccessPayload(user) {
+  const subscription = normalizePlanCode(user?.subscription, { fallback: 'plan_free' });
+  const access = resolveAccountAccess({
+    rawPlan: subscription,
+    userBasePlan: user?.base_plan || subscription,
+    subscriptionStatus: user?.payment_status || user?.subscription_status || null,
+    currentPeriodEnd: user?.current_period_end || null,
+    trialEndsAt: user?.trial_ends_at || null,
+    partnerExpiresAt: user?.partner_expires_at || null,
+  });
+
+  return {
+    subscription,
+    payment_state: access.paymentState,
+    partner_active: access.partnerActive,
+    entitlements: access.entitlements,
+  };
+}
+
+function buildAuthUserPayload(user, { sessionExpiresAt = null, includeProfileFields = false } = {}) {
+  const access = buildAccountAccessPayload(user);
+  const payload = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    rank_group: user.rank_group || null,
+    subscription: access.subscription,
+    payment_due_date: user.payment_due_date || null,
+    created_at: user.created_at,
+    session_expires_at: sessionExpiresAt,
+    payment_state: access.payment_state,
+    partner_active: access.partner_active,
+    entitlements: access.entitlements,
+  };
+
+  if (includeProfileFields) {
+    if (user.status !== undefined) payload.status = user.status;
+    if (user.payment_status !== undefined) payload.payment_status = user.payment_status;
+    if (user.updated_at !== undefined) payload.updated_at = user.updated_at;
+    if (user.last_login_at !== undefined) payload.last_login_at = user.last_login_at;
+    if (user.monthly_hour_goal !== undefined) payload.monthly_hour_goal = user.monthly_hour_goal;
+    if (user.planning_preferences !== undefined) {
+      payload.planning_preferences = user.planning_preferences;
+    }
+    if (user.schedule_template !== undefined) payload.schedule_template = user.schedule_template;
+  }
+
+  return payload;
+}
 
 function buildSession(user, sessionId = randomUUID()) {
   const token = jwtUtils.sign({
@@ -24,17 +75,7 @@ function buildSession(user, sessionId = randomUUID()) {
 
   return {
     token,
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      rank_group: user.rank_group || null,
-      subscription: normalizePlanCode(user.subscription, { fallback: 'plan_free' }),
-      payment_due_date: user.payment_due_date || null,
-      created_at: user.created_at,
-      session_expires_at: sessionExpiresAt,
-    },
+    user: buildAuthUserPayload(user, { sessionExpiresAt }),
   };
 }
 
@@ -226,6 +267,8 @@ async function updateProfile(userId, payload) {
 }
 
 module.exports = {
+  buildAuthUserPayload,
+  buildSession,
   login,
   loginWithGoogle,
   me,

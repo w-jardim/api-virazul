@@ -26,6 +26,9 @@ describe('Auth Integration', () => {
       email: 'admin.master@viraazul.local',
       password_hash: passwordHash,
       role: 'admin',
+      subscription: 'plan_free',
+      payment_status: null,
+      payment_due_date: null,
     });
 
     authRepository.updateLastLogin.mockResolvedValue();
@@ -44,6 +47,16 @@ describe('Auth Integration', () => {
       id: 1,
       email: 'admin.master@viraazul.local',
       role: 'admin',
+      subscription: 'plan_free',
+      payment_due_date: null,
+      payment_state: 'payment_exempt',
+      partner_active: false,
+      entitlements: {
+        canCreate: true,
+        canEdit: true,
+        hasAds: true,
+        isBillingBlocked: false,
+      },
     });
   });
 
@@ -89,6 +102,9 @@ describe('Auth Integration', () => {
       name: 'Admin Master',
       email: 'admin.master@viraazul.local',
       role: 'admin',
+      subscription: 'plan_free',
+      payment_status: null,
+      payment_due_date: null,
       created_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-01T00:00:00.000Z',
       last_login_at: '2026-01-01T00:00:00.000Z',
@@ -104,6 +120,17 @@ describe('Auth Integration', () => {
       id: 1,
       email: 'admin.master@viraazul.local',
       role: 'admin',
+      subscription: 'plan_free',
+      payment_status: null,
+      payment_due_date: null,
+      payment_state: 'payment_exempt',
+      partner_active: false,
+      entitlements: {
+        canCreate: true,
+        canEdit: true,
+        hasAds: true,
+        isBillingBlocked: false,
+      },
     });
   });
 });

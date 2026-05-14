@@ -2,41 +2,96 @@ const bcrypt = require('bcrypt');
 const { pool } = require('../../config/db');
 const {
   normalizePlanCode,
+  resolveAccountAccess,
   resolveBasePlan,
   isPartnerActive,
 } = require('../../utils/plan-access');
 
 const USER_FIELDS = `id, name, email, role, status, subscription, payment_status, payment_due_date, rank_group, created_at, updated_at, last_login_at`;
+const LATEST_SUBSCRIPTION_JOIN = `
+  LEFT JOIN (
+    SELECT s.owner_user_id, s.plan, s.status, s.current_period_end, s.trial_ends_at, s.partner_expires_at
+      FROM subscriptions s
+      INNER JOIN (
+        SELECT owner_user_id, MAX(id) AS max_id
+          FROM subscriptions
+         GROUP BY owner_user_id
+      ) last_sub ON last_sub.max_id = s.id
+  ) latest ON latest.owner_user_id = u.id
+`;
+
+const LEGACY_PAYMENT_STATUS_TO_SUBSCRIPTION_STATUS = {
+  paid: 'active',
+  pending: 'pending',
+  overdue: 'past_due',
+};
 
 function normalizeBilling(user) {
   if (!user) return user;
 
-  user.subscription = normalizePlanCode(user.subscription, { fallback: 'plan_free' });
+  const subscription = normalizePlanCode(user.subscription, { fallback: 'plan_free' });
+  const access = resolveAccountAccess({
+    rawPlan: user.subscription_plan || subscription,
+    userBasePlan: subscription,
+    subscriptionStatus:
+      user.subscription_status ||
+      LEGACY_PAYMENT_STATUS_TO_SUBSCRIPTION_STATUS[user.payment_status] ||
+      null,
+    currentPeriodEnd: user.current_period_end || user.payment_due_date || null,
+    trialEndsAt: user.trial_ends_at || null,
+    partnerExpiresAt: user.partner_expires_at || null,
+  });
 
-  if (['plan_free', 'plan_partner'].includes(user.subscription) || user.role === 'ADMIN_MASTER') {
-    user.payment_status = null;
-    user.payment_due_date = null;
+  const normalizedUser = {
+    ...user,
+    subscription,
+    payment_state: access.paymentState,
+    partner_active: access.partnerActive,
+    entitlements: access.entitlements,
+  };
+
+  if (['plan_free', 'plan_partner'].includes(subscription) || user.role === 'ADMIN_MASTER') {
+    normalizedUser.payment_status = null;
+    normalizedUser.payment_due_date = null;
   }
 
-  return user;
+  delete normalizedUser.subscription_plan;
+  delete normalizedUser.subscription_status;
+  delete normalizedUser.current_period_end;
+  delete normalizedUser.trial_ends_at;
+  delete normalizedUser.partner_expires_at;
+
+  return normalizedUser;
 }
 
 async function findAll() {
   const [rows] = await pool.query(
-    `SELECT ${USER_FIELDS}
-       FROM users
+    `SELECT ${USER_FIELDS},
+            latest.plan AS subscription_plan,
+            latest.status AS subscription_status,
+            latest.current_period_end,
+            latest.trial_ends_at,
+            latest.partner_expires_at
+       FROM users u
+       ${LATEST_SUBSCRIPTION_JOIN}
       WHERE deleted_at IS NULL
-      ORDER BY created_at DESC`
+      ORDER BY u.created_at DESC`
   );
   return rows.map(normalizeBilling);
 }
 
 async function findById(id) {
   const [rows] = await pool.query(
-    `SELECT ${USER_FIELDS}
-       FROM users
-      WHERE id = ?
-        AND deleted_at IS NULL
+    `SELECT ${USER_FIELDS},
+            latest.plan AS subscription_plan,
+            latest.status AS subscription_status,
+            latest.current_period_end,
+            latest.trial_ends_at,
+            latest.partner_expires_at
+       FROM users u
+       ${LATEST_SUBSCRIPTION_JOIN}
+      WHERE u.id = ?
+        AND u.deleted_at IS NULL
       LIMIT 1`,
     [id]
   );

@@ -11,6 +11,7 @@ const AUTH_USER_FIELDS = `
   role,
   rank_group,
   subscription,
+  payment_status,
   payment_due_date,
   google_sub,
   created_at

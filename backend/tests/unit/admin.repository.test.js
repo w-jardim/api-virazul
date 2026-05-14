@@ -16,6 +16,88 @@ describe('admin repository', () => {
     jest.clearAllMocks();
   });
 
+  test('findAll enriquece usuarios com payment_state, partner_active e entitlements', async () => {
+    pool.query.mockResolvedValueOnce([[
+      {
+        id: 3,
+        name: 'Parceiro Ativo',
+        email: 'parceiro@virazul.local',
+        role: 'POLICE',
+        status: 'active',
+        subscription: 'plan_starter',
+        payment_status: 'paid',
+        payment_due_date: '2026-06-10',
+        rank_group: 'CABO_SOLDADO',
+        created_at: '2026-05-01T00:00:00.000Z',
+        updated_at: '2026-05-02T00:00:00.000Z',
+        last_login_at: '2026-05-03T00:00:00.000Z',
+        subscription_plan: 'plan_starter',
+        subscription_status: 'active',
+        current_period_end: '2026-06-10',
+        trial_ends_at: null,
+        partner_expires_at: '2099-01-01T00:00:00.000Z',
+      },
+    ]]);
+
+    const result = await adminRepository.findAll();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: 3,
+      subscription: 'plan_starter',
+      payment_state: 'payment_exempt',
+      partner_active: true,
+      entitlements: expect.objectContaining({
+        canCreate: true,
+        canEdit: true,
+        isBillingBlocked: false,
+      }),
+    });
+    expect(result[0]).not.toHaveProperty('subscription_plan');
+    expect(result[0]).not.toHaveProperty('subscription_status');
+    expect(result[0]).not.toHaveProperty('partner_expires_at');
+  });
+
+  test('findById usa fallback legado para resolver payment_state quando nao ha subscription atual', async () => {
+    pool.query.mockResolvedValueOnce([[
+      {
+        id: 5,
+        name: 'Usuario Pago',
+        email: 'pago@virazul.local',
+        role: 'POLICE',
+        status: 'active',
+        subscription: 'plan_pro',
+        payment_status: 'overdue',
+        payment_due_date: '2026-05-10',
+        rank_group: null,
+        created_at: '2026-05-01T00:00:00.000Z',
+        updated_at: '2026-05-02T00:00:00.000Z',
+        last_login_at: null,
+        subscription_plan: null,
+        subscription_status: null,
+        current_period_end: null,
+        trial_ends_at: null,
+        partner_expires_at: null,
+      },
+    ]]);
+
+    const result = await adminRepository.findById(5);
+
+    expect(result).toMatchObject({
+      id: 5,
+      subscription: 'plan_pro',
+      payment_status: 'overdue',
+      payment_due_date: '2026-05-10',
+      payment_state: 'payment_blocked',
+      partner_active: false,
+      entitlements: expect.objectContaining({
+        canCreate: false,
+        canEdit: false,
+        isBillingBlocked: true,
+      }),
+    });
+  });
+
   test('limpa payment fields ao mudar assinatura para plano isento', async () => {
     pool.query
       .mockResolvedValueOnce([[{ id: 4, subscription: 'plan_starter', role: 'POLICE', payment_status: 'paid', payment_due_date: '2026-06-10' }]])
